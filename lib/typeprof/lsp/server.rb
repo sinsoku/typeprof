@@ -60,10 +60,16 @@ module TypeProf::LSP
       @signature_enabled = true
       @url_schema = url_schema || (File::ALT_SEPARATOR != "\\" ? "file://" : "file:///")
       @diagnostic_severity = :error
+      @debug_log_file = File.open("debug.log", "a")
     end
 
     attr_reader :open_texts
     attr_accessor :signature_enabled
+
+    def debug_log(msg)
+      @debug_log_file.puts("[#{Time.now.strftime('%Y-%m-%d %H:%M:%S.%L')}] #{msg}")
+      @debug_log_file.flush
+    end
 
     #: (String) -> String
     def path_to_uri(path)
@@ -76,7 +82,12 @@ module TypeProf::LSP
 
     #: (Array[String]) -> void
     def add_workspaces(folders)
-      folders.each do |path|
+      debug_log("add_workspaces started with #{folders.length} folder(s): #{folders.join(', ')}")
+
+      folders.each_with_index do |path, index|
+        folder_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        debug_log("Processing folder #{index + 1}/#{folders.length}: #{path}")
+
         conf_path = [".json", ".jsonc"].map do |ext|
           File.join(path, "typeprof.conf" + ext)
         end.find do |path|
@@ -84,9 +95,15 @@ module TypeProf::LSP
         end
         unless conf_path
           puts "typeprof.conf.json is not found in #{ path }"
+          debug_log("Config file not found in #{path}")
           next
         end
+
+        config_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         conf = TypeProf::LSP.load_json_with_comments(conf_path, symbolize_names: true)
+        config_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - config_start) * 1000
+        debug_log("Config file loading took #{sprintf('%.2f', config_time)}ms")
+
         if conf
           if conf[:rbs_dir]
             rbs_dir = File.expand_path(conf[:rbs_dir])
@@ -94,6 +111,8 @@ module TypeProf::LSP
             rbs_dir = File.expand_path(File.expand_path("sig", path))
           end
           @rbs_dir = rbs_dir
+          debug_log("RBS directory set to: #{rbs_dir}")
+
           if conf[:typeprof_version] == "experimental"
             if conf[:diagnostic_severity]
               severity = conf[:diagnostic_severity].to_sym
@@ -104,16 +123,39 @@ module TypeProf::LSP
                 puts "unknown severity: #{ severity }"
               end
             end
-            conf[:analysis_unit_dirs].each do |dir|
+
+            analysis_dirs = conf[:analysis_unit_dirs] || []
+            debug_log("Found #{analysis_dirs.length} analysis_unit_dirs")
+
+            analysis_dirs.each_with_index do |dir, dir_index|
+              dir_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
               dir = File.expand_path(dir, path)
+              debug_log("Creating Service for analysis_unit_dir #{dir_index + 1}/#{analysis_dirs.length}: #{dir}")
+
+              service_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
               core = @cores[dir] = TypeProf::Core::Service.new(@core_options)
+              service_init_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - service_start) * 1000
+              debug_log("Service initialization took #{sprintf('%.2f', service_init_time)}ms")
+
+              workspace_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
               core.add_workspace(dir, @rbs_dir)
+              workspace_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - workspace_start) * 1000
+              debug_log("add_workspace for #{dir} took #{sprintf('%.2f', workspace_time)}ms")
+
+              dir_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - dir_start) * 1000
+              debug_log("Total processing for analysis_unit_dir #{dir} took #{sprintf('%.2f', dir_time)}ms")
             end
           else
             puts "Unknown typeprof_version: #{ conf[:typeprof_version] }"
+            debug_log("Unknown typeprof_version: #{conf[:typeprof_version]}")
           end
         end
+
+        folder_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - folder_start) * 1000
+        debug_log("Folder #{path} processing completed in #{sprintf('%.2f', folder_time)}ms")
       end
+
+      debug_log("add_workspaces completed. Total cores created: #{@cores.length}")
     end
 
     #: (String) -> bool

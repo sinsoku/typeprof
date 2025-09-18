@@ -56,12 +56,20 @@ module TypeProf::LSP
   class Message::Initialize < Message
     METHOD = "initialize" # request (required)
     def run
+      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      @server.debug_log("Initialize request started")
+
       folders = @params[:workspaceFolders].map do |folder|
         folder => { uri:, }
         @server.uri_to_path(uri)
       end
 
+      @server.debug_log("Parsing workspace folders took #{sprintf('%.2f', (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000)}ms")
+
+      workspace_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       @server.add_workspaces(folders)
+      workspace_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - workspace_start) * 1000
+      @server.debug_log("add_workspaces took #{sprintf('%.2f', workspace_time)}ms")
 
       respond(
         capabilities: {
@@ -99,6 +107,8 @@ module TypeProf::LSP
         },
       )
 
+      total_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000
+      @server.debug_log("Initialize request completed in #{sprintf('%.2f', total_time)}ms")
       log "TypeProf for IDE is started successfully"
     end
   end

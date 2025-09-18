@@ -1,15 +1,28 @@
 module TypeProf::Core
   class Service
     def initialize(options)
+      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      debug_log("Service initialization started")
+
       @options = options
 
       @rb_text_nodes = {}
       @rbs_text_nodes = {}
 
       @genv = GlobalEnv.new
-      @genv.load_core_rbs(load_rbs_declarations(@options[:rbs_collection]).declarations)
 
+      rbs_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      @genv.load_core_rbs(load_rbs_declarations(@options[:rbs_collection]).declarations)
+      rbs_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - rbs_start) * 1000
+      debug_log("RBS core loading took #{sprintf('%.2f', rbs_time)}ms")
+
+      builtin_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       Builtin.new(genv).deploy
+      builtin_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - builtin_start) * 1000
+      debug_log("Builtin deploy took #{sprintf('%.2f', builtin_time)}ms")
+
+      total_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000
+      debug_log("Service initialization completed in #{sprintf('%.2f', total_time)}ms")
     end
 
     def load_rbs_declarations(rbs_collection)
@@ -26,6 +39,13 @@ module TypeProf::Core
 
     attr_reader :genv
 
+    def debug_log(msg)
+      return unless defined?(@debug_log_file)
+      @debug_log_file ||= File.open("debug.log", "a")
+      @debug_log_file.puts("[#{Time.now.strftime('%Y-%m-%d %H:%M:%S.%L')}] Core::Service: #{msg}")
+      @debug_log_file.flush
+    end
+
     def reset!
       @rb_text_nodes.each_value {|node| node.undefine(@genv) }
       @rbs_text_nodes.each_value {|nodes| nodes.each {|n| n.undefine(@genv) } }
@@ -38,12 +58,39 @@ module TypeProf::Core
     end
 
     def add_workspace(rb_folder, rbs_folder)
-      Dir.glob(File.expand_path(rb_folder + "/**/*.{rb,rbs}")) do |path|
+      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      debug_log("add_workspace started: rb_folder=#{rb_folder}, rbs_folder=#{rbs_folder}")
+
+      rb_scan_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      rb_files = Dir.glob(File.expand_path(rb_folder + "/**/*.{rb,rbs}"))
+      rb_scan_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - rb_scan_start) * 1000
+      debug_log("Ruby files scan took #{sprintf('%.2f', rb_scan_time)}ms, found #{rb_files.length} files")
+
+      rb_files.each_with_index do |path, index|
+        file_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         update_file(path, nil)
+        file_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - file_start) * 1000
+        if file_time > 100
+          debug_log("Ruby file #{index + 1}/#{rb_files.length} (#{File.basename(path)}) took #{sprintf('%.2f', file_time)}ms")
+        end
       end
-      Dir.glob(File.expand_path(rbs_folder + "/**/*.{rb,rbs}")) do |path|
+
+      rbs_scan_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      rbs_files = Dir.glob(File.expand_path(rbs_folder + "/**/*.{rb,rbs}"))
+      rbs_scan_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - rbs_scan_start) * 1000
+      debug_log("RBS files scan took #{sprintf('%.2f', rbs_scan_time)}ms, found #{rbs_files.length} files")
+
+      rbs_files.each_with_index do |path, index|
+        file_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         update_file(path, nil)
+        file_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - file_start) * 1000
+        if file_time > 100
+          debug_log("RBS file #{index + 1}/#{rbs_files.length} (#{File.basename(path)}) took #{sprintf('%.2f', file_time)}ms")
+        end
       end
+
+      total_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000
+      debug_log("add_workspace completed in #{sprintf('%.2f', total_time)}ms (#{rb_files.length + rbs_files.length} files total)")
     end
 
     def update_file(path, code)
