@@ -1180,4 +1180,77 @@ module TypeProf::Core
       changes.add_edge(genv, Source.new(new_hash_type), @out_vtx)
     end
   end
+
+  class ArrayAsetBox < Box
+    def initialize(node, genv, recv, idx, val_vtx, out_vtx)
+      super(node)
+      @recv = recv
+      @idx = idx
+      @val_vtx = val_vtx
+      @out_vtx = out_vtx
+      @recv.add_edge(genv, self)
+      @val_vtx.add_edge(genv, self)
+      # Cache vertices to ensure convergence in loops.
+      @elem_cache = {}
+      @unified_elem = Vertex.new(node)
+      @merged_elem = Vertex.new(node)
+    end
+
+    attr_reader :recv, :idx, :val_vtx, :out_vtx
+
+    def ret = @out_vtx
+
+    def destroy(genv)
+      @recv.remove_edge(genv, self)
+      @val_vtx.remove_edge(genv, self)
+      super(genv)
+    end
+
+    def run0(genv, changes)
+      @recv.each_type do |ty|
+        case ty
+        when Type::Array
+          if ty.elems
+            new_elems = []
+            ty.elems.each_with_index do |elem_vtx, i|
+              @elem_cache[i] ||= Vertex.new(@node)
+              changes.add_edge(genv, elem_vtx, @elem_cache[i]) unless elem_vtx.equal?(@elem_cache[i])
+              new_elems << @elem_cache[i]
+            end
+            if @idx >= 0 && @idx < new_elems.size
+              changes.add_edge(genv, @val_vtx, @elem_cache[@idx])
+            elsif @idx < 0 && -@idx <= new_elems.size
+              actual_idx = new_elems.size + @idx
+              changes.add_edge(genv, @val_vtx, @elem_cache[actual_idx])
+            end
+            new_elems.each do |vtx|
+              changes.add_edge(genv, vtx, @unified_elem)
+            end
+            base_type = genv.gen_ary_type(@unified_elem)
+            new_array = Type::Array.new(genv, new_elems, base_type)
+            changes.add_edge(genv, Source.new(new_array), @out_vtx)
+          else
+            build_merged_array_type(genv, changes, ty.get_elem(genv))
+          end
+        when Type::Instance
+          if ty.mod == genv.mod_ary
+            build_merged_array_type(genv, changes, ty.args[0])
+          else
+            changes.add_edge(genv, Source.new(ty), @out_vtx)
+          end
+        else
+          changes.add_edge(genv, Source.new(ty), @out_vtx)
+        end
+      end
+    end
+
+    private
+
+    def build_merged_array_type(genv, changes, old_elem_vtx)
+      changes.add_edge(genv, old_elem_vtx, @merged_elem) unless old_elem_vtx.equal?(@merged_elem)
+      changes.add_edge(genv, @val_vtx, @merged_elem)
+      new_ary_type = genv.gen_ary_type(@merged_elem)
+      changes.add_edge(genv, Source.new(new_ary_type), @out_vtx)
+    end
+  end
 end

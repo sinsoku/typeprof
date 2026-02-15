@@ -56,9 +56,19 @@ module TypeProf::Core
 
     def array_aset(changes, node, ty, a_args, ret)
       if a_args.positionals.size == 2
+        val = a_args.positionals[1]
+
+        # Skip backflow for local variable receivers (handled by ArrayAsetBox)
+        if node.recv.is_a?(AST::LocalVariableReadNode)
+          idx = node.positional_args[0]
+          if idx.is_a?(AST::IntegerNode)
+            changes.add_edge(@genv, val, ret)
+            return true
+          end
+        end
+
         case ty
         when Type::Array
-          val = a_args.positionals[1]
           idx = node.positional_args[0]
           if idx.is_a?(AST::IntegerNode) && ty.get_elem(@genv, idx.lit)
             changes.add_edge(@genv, val, ty.get_elem(@genv, idx.lit))
