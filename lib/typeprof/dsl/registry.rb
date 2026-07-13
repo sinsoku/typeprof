@@ -2,12 +2,30 @@ module TypeProf
   module Dsl
     class Registry
       @entries = {}
+      @include_entries = {}
 
       class << self
         def register(plugin_class, cpath:, mid:, singleton:)
           key = [cpath, mid, singleton]
           @entries[key] ||= []
           @entries[key] << plugin_class unless @entries[key].include?(plugin_class)
+        end
+
+        def register_include(plugin_class, cpath:)
+          @include_entries[cpath] ||= []
+          @include_entries[cpath] << plugin_class unless @include_entries[cpath].include?(plugin_class)
+        end
+
+        # Fire on_include plugins registered for `included_cpath`. Plugins inject
+        # relations via scope.owner (e.g. extend_module); returns the injected
+        # relations, or nil if no plugin matched. `origin` is the include def that
+        # triggered the firing and makes the injected relations unique to it.
+        def fire_include(genv, owner_mod, included_cpath, origin)
+          plugin_classes = @include_entries[included_cpath]
+          return unless plugin_classes
+          scope = IncludeScope.new(genv, owner_mod, origin)
+          plugin_classes.each {|plugin_class| plugin_class.new.install(scope) }
+          scope.owner.injected
         end
 
         def apply(genv)

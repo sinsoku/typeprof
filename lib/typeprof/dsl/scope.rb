@@ -1,5 +1,52 @@
 module TypeProf
   module Dsl
+    # A relation (extend / include / prepend) injected by a DSL plugin instead of
+    # an AST const node. It mimics the `static_ret.cpath` interface that
+    # ModuleEntity#on_parent_modules_changed reads. `origin` (the def that
+    # triggered the plugin) keeps relations from different defs distinct --
+    # TypeProf::Core::Set raises on duplicates -- and value equality matches them
+    # on removal. `kind` selects the matching remove_<kind>_def.
+    PluginRelation = Struct.new(:origin, :kind, :cpath) do
+      def static_ret = self
+    end
+
+    # Scope passed to a plugin fired by `on_include`. The owner is the including
+    # class, known directly as a ModuleEntity (not derived from a receiver type).
+    class IncludeScope
+      def initialize(genv, owner_mod, origin)
+        @owner = IncludeScopeOwner.new(genv, owner_mod, origin)
+      end
+
+      attr_reader :owner
+    end
+
+    class IncludeScopeOwner
+      def initialize(genv, owner_mod, origin)
+        @genv      = genv
+        @owner_mod = owner_mod
+        @origin    = origin
+        @injected  = []
+      end
+
+      # The synthetic relations this firing injected, for symmetric teardown.
+      attr_reader :injected
+
+      # Add `extend <name>` to the including class, mirroring what Ruby's
+      # `included` hook does (e.g. Singleton's `klass.extend SingletonClassMethods`).
+      def extend_module(name) = inject(:extend, name)
+
+      private
+
+      # Inject a relation of the given kind (:extend / :include / :prepend) into
+      # the owner via the matching add_<kind>_def, recording it for teardown.
+      def inject(kind, name)
+        rel = PluginRelation.new(@origin, kind, Dsl.cpath_from(name))
+        return if @injected.include?(rel) # tolerate two plugins injecting the same relation
+        @owner_mod.public_send("add_#{kind}_def", @genv, rel)
+        @injected << rel
+      end
+    end
+
     class Scope
       def initialize(genv, changes, node, ty, a_args)
         @genv    = genv

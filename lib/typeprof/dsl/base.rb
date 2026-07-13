@@ -1,9 +1,19 @@
 module TypeProf
   module Dsl
+    # Convert a Ruby constant name like "Foo::Bar" into a cpath [:Foo, :Bar].
+    def self.cpath_from(name)
+      name.split("::").map(&:to_sym)
+    end
+
     class Base
       def self.on(pattern)
         cpath, mid, singleton = parse_pattern(pattern)
         Registry.register(self, cpath: cpath, mid: mid, singleton: singleton)
+      end
+
+      # Structural trigger: fire when `include <name>` appears in a class body.
+      def self.on_include(name)
+        Registry.register_include(self, cpath: Dsl.cpath_from(name))
       end
 
       def install(scope)

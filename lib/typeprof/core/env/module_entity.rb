@@ -26,6 +26,10 @@ module TypeProf::Core
       @included_modules = {}
       @prepended_modules = {}
       @extended_modules = {}
+      # Relations that plugins inject, keyed by the origin (the resolved def that
+      # triggered them) so they can be torn down when that origin is removed or
+      # re-resolved.
+      @plugin_injections = {}
       @basic_object = @cpath == [:BasicObject]
 
       # child modules (subclasses and all modules that include me)
@@ -293,6 +297,17 @@ module TypeProf::Core
       return [new_parent, false]
     end
 
+    # Reconcile the relations a plugin injected for `origin` (now resolved to
+    # `new_parent`): drop the old ones, then re-fire. Each relation's `kind` picks
+    # its remove_<kind>_def.
+    def sync_plugin_injections(genv, origin, new_parent)
+      old = @plugin_injections.delete(origin)
+      old&.each {|rel| send("remove_#{rel.kind}_def", genv, rel) }
+      return unless new_parent && new_parent.cpath
+      injected = TypeProf::Dsl::Registry.fire_include(genv, self, new_parent.cpath, origin)
+      @plugin_injections[origin] = injected if injected && !injected.empty?
+    end
+
     def find_superclass_const_read
       return nil if @basic_object
 
@@ -333,6 +348,9 @@ module TypeProf::Core
 
     def on_parent_modules_changed(genv)
       any_updated = false
+      # (origin, new_parent) pairs whose plugin injections are reconciled after the
+      # loops below.
+      pending_injections = []
 
       unless @basic_object
         new_superclass_cpath = find_superclass_const_read
@@ -393,6 +411,8 @@ module TypeProf::Core
           else
             @included_modules.delete(idef) || raise
           end
+          # Reconcile plugin injections after the loops (see below).
+          pending_injections << [idef, new_parent]
           any_updated = true
         end
       end
@@ -449,6 +469,8 @@ module TypeProf::Core
           false
         else
           _new_parent, updated = update_parent(genv, origin, old_mod, nil)
+          # Tear down plugin injections after the loops (see below).
+          pending_injections << [origin, nil]
           any_updated ||= updated
           true
         end
@@ -471,6 +493,12 @@ module TypeProf::Core
           true
         end
       end
+
+      # Reconcile now that every relation Set has been iterated -- a plugin may
+      # inject include/extend/prepend defs, which must not mutate a Set mid-loop.
+      # add_*_def re-queues :parent_modules_changed, so injected relations resolve
+      # in a following pass within the same define_all.
+      pending_injections.each {|origin, new_parent| sync_plugin_injections(genv, origin, new_parent) }
 
       if any_updated
         @subclass_checks.each do |mcall_box|
