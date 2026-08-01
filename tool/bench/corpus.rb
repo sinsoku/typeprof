@@ -12,6 +12,14 @@ module TypeProf
     CORPUS_DIR = File.join(ROOT, "tmp", "bench_corpus")
     OUT_DIR = File.join(ROOT, "tmp", "bench_out")
 
+    # `Bundler.with_unbundled_env` swaps ENV in place and restores it after the
+    # block, which races once workers run in parallel. Build the environment
+    # once and hand it to each child process instead.
+    UNBUNDLED_ENV = Bundler.unbundled_env.freeze
+
+    # Environment for a child that should resolve gems from `gemfile`.
+    def self.bundle_env(gemfile) = UNBUNDLED_ENV.merge("BUNDLE_GEMFILE" => gemfile)
+
     # A project to run TypeProf against.
     #
     # `ref` is pinned so that only TypeProf changes between measurements. `setup`
@@ -83,28 +91,31 @@ module TypeProf
         log_path = "#{out_path}.log"
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-        Bundler.with_unbundled_env do
-          pid = Process.spawn({ "BUNDLE_GEMFILE" => gemfile }, *cmd,
-                              chdir: dir, [:out, :err] => log_path)
-          begin
-            Timeout.timeout(timeout) { Process.waitpid(pid) }
-          rescue Timeout::Error
-            Process.kill("KILL", pid)
-            Process.waitpid(pid)
-            return [elapsed_since(t), :timeout, "exceeded #{timeout}s"]
-          end
+        pid = Process.spawn(Bench.bundle_env(gemfile), *cmd, unsetenv_others: true,
+                            chdir: dir, [:out, :err] => log_path)
+        begin
+          Timeout.timeout(timeout) { Process.waitpid(pid) }
+        rescue Timeout::Error
+          Process.kill("KILL", pid)
+          Process.waitpid(pid)
+          return [elapsed_since(t), :timeout, "exceeded #{timeout}s"]
         end
 
         elapsed = elapsed_since(t)
         return [elapsed, :ok, nil] if $?.success?
 
-        [elapsed, :crash, "exited with #{$?.exitstatus}: #{tail(log_path)}"]
+        [elapsed, :crash, "exited with #{$?.exitstatus}: #{excerpt(log_path)}"]
       end
 
       def elapsed_since(t) = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
 
-      def tail(path, lines = 5)
-        File.readlines(path).last(lines).join.strip
+      # Both ends of the log: a Ruby exception puts its message on the first
+      # line and the frames at the end, and either can be the informative part.
+      def excerpt(path, lines = 3)
+        content = File.readlines(path).map(&:strip).reject(&:empty?)
+        return content.join(" / ") if content.size <= lines * 2
+
+        (content.first(lines) + ["..."] + content.last(lines)).join(" / ")
       rescue SystemCallError
         ""
       end

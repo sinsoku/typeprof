@@ -60,10 +60,8 @@ module TypeProf
       end
 
       def install_gems(gemfile)
-        Bundler.with_unbundled_env do
-          system({ "BUNDLE_GEMFILE" => gemfile }, "bundle", "install", "--quiet",
-                 out: File::NULL, err: File::NULL)
-        end
+        system(Bench.bundle_env(gemfile), "bundle", "install", "--quiet",
+               unsetenv_others: true, out: File::NULL, err: File::NULL)
       end
 
       private
