@@ -17,7 +17,7 @@ module TypeProf
     # `ref` is pinned so that only TypeProf changes between measurements. `setup`
     # runs once when the project is prepared, not on every measurement, because
     # backfilling replays the same corpus over dozens of TypeProf commits.
-    Project = Data.define(:name, :repo, :ref, :targets, :exclude, :setup) do
+    Project = Data.define(:name, :repo, :ref, :targets, :exclude, :setup, :bundled) do
       def dir = File.join(CORPUS_DIR, name)
 
       def cloned? = Dir.exist?(File.join(dir, ".git"))
@@ -52,7 +52,13 @@ module TypeProf
       # `bin` and `gemfile` come from a git worktree of the TypeProf commit being
       # measured. Pointing BUNDLE_GEMFILE at that worktree pins rbs to TypeProf's
       # own lockfile instead of whatever the target project happens to bundle.
+      #
+      # A project with a prepared bundle of its own is analysed inside it
+      # instead: its rbs collection lockfile refers to gems that ship their own
+      # signatures, which only resolve within that bundle. `prepare!` pins rbs
+      # there to the same revision, so TypeProf still runs against one rbs.
       def measure(bin:, gemfile:, out_path: File.join(OUT_DIR, "#{name}.out"), timeout: 600)
+        gemfile = File.join(dir, "Gemfile") if bundled
         FileUtils.mkdir_p(File.dirname(out_path))
         argv = ["-o", out_path, "--show-stats", "--show-errors",
                 *exclude.flat_map { ["--exclude", _1] }, *targets]
@@ -109,20 +115,33 @@ module TypeProf
     module Corpus
       module_function
 
-      def project(name:, repo:, ref:, targets: ["."], exclude: [], setup: nil)
-        Project.new(name:, repo:, ref:, targets:, exclude:, setup:)
+      def project(name:, repo:, ref:, targets: ["."], exclude: [], setup: nil, bundled: false)
+        Project.new(name:, repo:, ref:, targets:, exclude:, setup:, bundled:)
       end
 
       # Adds a gem to the target project's Gemfile unless it is already there.
       def add_gem(name, *args)
-        return if File.read("Gemfile").include?(name)
+        return if File.read("Gemfile").match?(/^\s*gem ["']#{Regexp.escape(name)}["']/)
 
         system("bundle", "add", name, *args, exception: true)
+      end
+
+      # `rbs collection install` resolves gems from the project's own bundle, so
+      # it has to run there rather than under TypeProf's. But the lockfile it
+      # writes records the rbs version that produced it, and TypeProf fails to
+      # load a collection built by a different version. Pin the project's rbs to
+      # the revision TypeProf itself uses to satisfy both.
+      def add_matching_rbs
+        revision = File.read(File.join(ROOT, "Gemfile.lock"))[%r{github\.com/ruby/rbs.*?\n\s*revision: (\h+)}m, 1]
+        raise "cannot determine TypeProf's rbs revision" unless revision
+
+        add_gem("rbs", "--github", "ruby/rbs", "--ref", revision)
       end
 
       # Generates RBS for a Rails app. Each step is guarded for idempotency so
       # that re-preparing an existing corpus skips the work already done.
       def setup_rails_rbs
+        add_matching_rbs
         add_gem("rbs_rails", "-v", "0.13.1")
         system("bin/rails", "db:migrate", exception: true) unless File.exist?("db/schema.rb")
         system("bundle exec rbs collection init", exception: true) unless File.exist?("rbs_collection.yaml")
@@ -158,6 +177,7 @@ module TypeProf
           ref: "6.1.1",
           targets: ["app", "sig"],
           setup: -> { write_sqlite_config; setup_rails_rbs },
+          bundled: true,
         ),
         # No setup: rubygems.org's Gemfile takes its Ruby requirement from
         # `.ruby-version` (4.0.6), which this repository does not run on, so
