@@ -13,8 +13,7 @@ require_relative "corpus"
 
 include TypeProf::Bench # rubocop:disable Style/MixinUsage
 
-names = ARGV.empty? ? Corpus.all.map(&:name) : ARGV
-projects = names.map { Corpus.fetch(_1) }
+projects = ARGV.empty? ? Corpus::ALL : ARGV.map { Corpus.fetch(_1) }
 
 projects.each do |project|
   puts "==> #{project.name} (#{project.ref})"

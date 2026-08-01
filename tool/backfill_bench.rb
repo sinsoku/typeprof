@@ -49,15 +49,15 @@ OptionParser.new do |opt|
   opt.on("--force", "Re-measure commits that already have data") { options[:force] = true }
 end.parse!
 
-def git(*args) = IO.popen(["git", "-C", ROOT, *args], &:read)
+Commit = Data.define(:sha, :timestamp, :date)
 
 def select_commits(options)
-  args = ["rev-list", "--first-parent", "--format=%H %cs", "--no-commit-header",
+  args = ["rev-list", "--first-parent", "--format=%H %ct %cs", "--no-commit-header",
           "#{STATS_SINCE}..#{options[:rev]}"]
   args << "--since=#{options[:since]}" if options[:since]
   args << "--until=#{options[:until]}" if options[:until]
 
-  list = git(*args).lines.map { _1.split(" ", 2).map(&:strip) }
+  list = git(*args).lines.map { Commit.new(*_1.split(" ").then { |s, t, d| [s, t.to_i, d] }) }
   list = sample(list, options[:sampling])
   list = list.first(options[:limit]) if options[:limit]
   list.reverse # oldest first, so a partial run still builds history forward
@@ -66,23 +66,23 @@ end
 def sample(list, mode)
   case mode
   when "all" then list
-  when "monthly" then list.uniq { |_sha, date| date[0, 7] } # newest commit of each month
+  when "monthly" then list.uniq { _1.date[0, 7] } # newest commit of each month
   when "tags"
     # Both lightweight (objectname) and annotated (*objectname) tags.
     # `git tag --format` writes a newline as %0a; %n is not interpreted here.
     tagged = git("tag", "--format=%(objectname)%0a%(*objectname)").lines.map(&:strip).to_set
-    list.select { |sha, _| tagged.include?(sha) }
+    list.select { tagged.include?(_1.sha) }
   end
 end
 
 runner = Runner.new(
-  projects: options[:projects] ? options[:projects].map { Corpus.fetch(_1) } : Corpus.all,
+  projects: options[:projects] ? options[:projects].map { Corpus.fetch(_1) } : Corpus::ALL,
   timeout: options[:timeout],
   jobs: options[:jobs],
 )
 
 targets = select_commits(options)
-targets = targets.reject { |sha, _| runner.measured?(sha) } unless options[:force]
+targets = targets.reject { runner.measured?(_1.sha) } unless options[:force]
 
 if targets.empty?
   puts "Nothing to measure (use --force to re-measure)."
@@ -91,31 +91,21 @@ end
 
 puts "Measuring #{targets.size} commit(s) with #{options[:jobs]} job(s)"
 
-# Warm the shared gem home once so that concurrent workers do not race to
-# install the same gems, and clear anything a previous run left behind.
-runner.install_gems(File.join(ROOT, "Gemfile"))
-runner.reset_worktrees!
-
 queue = Queue.new
 targets.each { queue << _1 }
+queue.close
 failures = []
 mutex = Mutex.new
 
 workers = Array.new([options[:jobs], targets.size].min) do
   Thread.new do
-    loop do
-      sha, date = begin
-        queue.pop(true)
-      rescue ThreadError
-        break
-      end
-
+    while (commit = queue.pop)
       begin
-        data = runner.run(sha)
+        data = runner.run(commit.sha, timestamp: commit.timestamp, date: commit.date)
         summary = data[:error] || data[:projects].map { "#{_1[:name]}=#{_1[:status]}" }.join(" ")
-        mutex.synchronize { puts "#{sha[0, 10]} #{date}  #{summary}" }
+        mutex.synchronize { puts "#{commit.sha[0, 10]} #{commit.date}  #{summary}" }
       rescue => e
-        mutex.synchronize { failures << [sha, "#{e.class}: #{e.message}"] }
+        mutex.synchronize { failures << [commit.sha, "#{e.class}: #{e.message}"] }
       end
     end
   end

@@ -17,14 +17,11 @@ module TypeProf
       WORKTREE_DIR = File.join(ROOT, "tmp", "bench_wt")
       DATA_DIR = File.join(ROOT, "bench_data")
 
-      # Recorded alongside the numbers because the flags affect them: enabling
-      # `--show-errors` shifts the typed slot counts slightly.
-      FLAGS = ["--show-stats", "--show-errors"].freeze
-
-      def initialize(projects: Corpus.all, timeout: 600, jobs: 1)
+      def initialize(projects:, timeout:, jobs:)
         @projects = projects
         @timeout = timeout
         @jobs = jobs
+        @install_lock = Mutex.new
       end
 
       def data_path(sha) = File.join(DATA_DIR, "#{sha}.json")
@@ -33,25 +30,22 @@ module TypeProf
       # asked for. Otherwise a run narrowed with `--projects` would make later
       # full runs skip the commit and leave the gap in place.
       def measured?(sha)
-        return false unless File.exist?(data_path(sha))
-
         measured = JSON.parse(File.read(data_path(sha)))["projects"].to_a.map { _1["name"] }
         (@projects.map(&:name) - measured).empty?
-      rescue JSON::ParserError
+      rescue Errno::ENOENT, JSON::ParserError
         false
       end
 
       # Measures `sha` and writes bench_data/<sha>.json. Returns the data Hash.
-      def run(sha)
-        sha = resolve(sha)
+      # The commit's date comes from the caller, which already listed it.
+      def run(sha, timestamp:, date:)
         worktree = File.join(WORKTREE_DIR, sha)
 
-        FileUtils.mkdir_p(WORKTREE_DIR)
-        git!("worktree", "add", "-q", "--detach", worktree, sha)
+        add_worktree(sha, worktree)
         begin
-          data = collect(sha, worktree)
+          data = collect(sha, worktree, timestamp, date)
         ensure
-          git!("worktree", "remove", "--force", worktree)
+          Bench.git!("worktree", "remove", "--force", worktree)
         end
 
         FileUtils.mkdir_p(DATA_DIR)
@@ -59,37 +53,34 @@ module TypeProf
         data
       end
 
-      def install_gems(gemfile)
-        system(Bench.bundle_env(gemfile), "bundle", "install", "--quiet",
-               unsetenv_others: true, out: File::NULL, err: File::NULL)
-      end
-
-      # Clears worktrees left behind by a run that was killed mid-flight, which
-      # would otherwise make `worktree add` fail for those commits forever.
-      # Call once before starting workers, never from one: pruning races with a
-      # concurrent `worktree add`.
-      def reset_worktrees!
-        git!("worktree", "prune")
-        FileUtils.rm_rf(WORKTREE_DIR)
-      end
-
       private
 
-      def collect(sha, worktree)
-        gemfile = File.join(worktree, "Gemfile")
-        data = metadata(sha, worktree)
+      def add_worktree(sha, worktree)
+        FileUtils.mkdir_p(WORKTREE_DIR)
+        FileUtils.rm_rf(worktree)
+        Bench.git!("worktree", "add", "-q", "--detach", worktree, sha)
+      rescue RuntimeError
+        # A run killed mid-flight leaves the worktree registered without its
+        # directory, and `add` then refuses the path forever. Pruning only
+        # drops entries whose directory is gone, so it cannot disturb a
+        # concurrent worker whose worktree is already checked out.
+        Bench.git!("worktree", "prune")
+        Bench.git!("worktree", "add", "-q", "--detach", worktree, sha)
+      end
 
-        unless install_gems(gemfile)
+      def collect(sha, worktree, timestamp, date)
+        data = metadata(sha, worktree, timestamp, date)
+
+        unless install_gems(File.join(worktree, "Gemfile"))
           return data.merge(error: "bundle install failed", projects: [])
         end
 
-        data.merge(projects: @projects.map { measure(_1, sha, worktree, gemfile) })
+        data.merge(projects: @projects.map { measure(_1, sha, worktree) })
       end
 
-      def measure(project, sha, worktree, gemfile)
+      def measure(project, sha, worktree)
         result = project.measure(
-          bin: File.join(worktree, "bin/typeprof"),
-          gemfile: gemfile,
+          worktree: worktree,
           out_path: File.join(OUT_DIR, sha, "#{project.name}.out"),
           timeout: @timeout,
         )
@@ -97,14 +88,23 @@ module TypeProf
         result
       end
 
-      def metadata(sha, worktree)
-        timestamp, date = git("log", "-1", "--format=%ct%n%cs", sha).lines.map(&:strip)
+      # Serialised because concurrent workers otherwise install into the same
+      # gem home at once. Almost always a no-op: consecutive commits share a
+      # lockfile, so bundler finds everything already present.
+      def install_gems(gemfile)
+        @install_lock.synchronize do
+          system(Bench.bundle_env(gemfile), "bundle", "install", "--quiet",
+                 unsetenv_others: true, out: File::NULL, err: File::NULL)
+        end
+      end
+
+      def metadata(sha, worktree, timestamp, date)
         {
           sha: sha,
-          commit_timestamp: timestamp.to_i,
+          commit_timestamp: timestamp,
           commit_date: date,
           typeprof_version: typeprof_version(worktree),
-          rbs_revision: rbs_revision(worktree),
+          rbs_revision: Bench.rbs_revision(File.join(worktree, "Gemfile.lock")),
           measured_at: Time.now.iso8601,
           jobs: @jobs,
           flags: FLAGS,
@@ -117,19 +117,6 @@ module TypeProf
       rescue SystemCallError
         nil
       end
-
-      def rbs_revision(worktree)
-        lock = File.read(File.join(worktree, "Gemfile.lock"))
-        lock[%r{github\.com/ruby/rbs.*?\n\s*revision: (\h+)}m, 1]
-      rescue SystemCallError
-        nil
-      end
-
-      def resolve(rev) = git("rev-parse", rev).strip
-
-      def git(*args) = IO.popen(["git", "-C", ROOT, *args], &:read)
-
-      def git!(*args) = system("git", "-C", ROOT, *args, exception: true)
     end
   end
 end

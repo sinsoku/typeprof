@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "bundler"
+require "bundler/lockfile_parser"
 require "fileutils"
 require "timeout"
 
@@ -12,20 +13,41 @@ module TypeProf
     CORPUS_DIR = File.join(ROOT, "tmp", "bench_corpus")
     OUT_DIR = File.join(ROOT, "tmp", "bench_out")
 
+    # Recorded alongside the numbers because the flags affect them: enabling
+    # `--show-errors` shifts the typed slot counts slightly.
+    FLAGS = ["--show-stats", "--show-errors"].freeze
+
     # `Bundler.with_unbundled_env` swaps ENV in place and restores it after the
     # block, which races once workers run in parallel. Build the environment
     # once and hand it to each child process instead.
     UNBUNDLED_ENV = Bundler.unbundled_env.freeze
 
+    module_function
+
     # Environment for a child that should resolve gems from `gemfile`.
-    def self.bundle_env(gemfile) = UNBUNDLED_ENV.merge("BUNDLE_GEMFILE" => gemfile)
+    def bundle_env(gemfile) = UNBUNDLED_ENV.merge("BUNDLE_GEMFILE" => gemfile)
+
+    def git(*args, dir: ROOT) = IO.popen(["git", "-C", dir, *args], &:read)
+
+    def git!(*args, dir: ROOT) = system("git", "-C", dir, *args, exception: true)
+
+    # The revision a lockfile pins ruby/rbs to, or nil if it does not use git.
+    # Both the corpus and the measured commit have to agree on this.
+    def rbs_revision(lock_path)
+      sources = Bundler::LockfileParser.new(File.read(lock_path)).sources
+      sources.grep(Bundler::Source::Git).find { _1.name == "rbs" }&.revision
+    rescue SystemCallError
+      nil
+    end
 
     # A project to run TypeProf against.
     #
     # `ref` is pinned so that only TypeProf changes between measurements. `setup`
     # runs once when the project is prepared, not on every measurement, because
     # backfilling replays the same corpus over dozens of TypeProf commits.
-    Project = Data.define(:name, :repo, :ref, :targets, :exclude, :setup, :bundled) do
+    Project = Data.define(:name, :repo, :ref, :targets, :exclude, :setup) do
+      def initialize(targets: ["."], exclude: [], setup: nil, **) = super
+
       def dir = File.join(CORPUS_DIR, name)
 
       def cloned? = Dir.exist?(File.join(dir, ".git"))
@@ -37,11 +59,11 @@ module TypeProf
       def clone!
         return if cloned?
 
-        FileUtils.mkdir_p(CORPUS_DIR)
-        run!("git init -q #{dir}")
-        run!("git -C #{dir} remote add origin #{repo}")
-        run!("git -C #{dir} fetch --depth 1 -q origin #{ref}")
-        run!("git -C #{dir} checkout -q FETCH_HEAD")
+        FileUtils.mkdir_p(dir)
+        Bench.git!("init", "-q", dir: dir)
+        Bench.git!("remote", "add", "origin", repo, dir: dir)
+        Bench.git!("fetch", "--depth", "1", "-q", "origin", ref, dir: dir)
+        Bench.git!("checkout", "-q", "FETCH_HEAD", dir: dir)
       end
 
       # Clone and run the project's own setup. Setup steps are expected to be
@@ -55,31 +77,32 @@ module TypeProf
         end
       end
 
-      # Run one TypeProf binary against this project and return raw metrics.
-      #
-      # `bin` and `gemfile` come from a git worktree of the TypeProf commit being
-      # measured. Pointing BUNDLE_GEMFILE at that worktree pins rbs to TypeProf's
-      # own lockfile instead of whatever the target project happens to bundle.
-      #
-      # A project with a prepared bundle of its own is analysed inside it
-      # instead: its rbs collection lockfile refers to gems that ship their own
-      # signatures, which only resolve within that bundle. `prepare!` pins rbs
-      # there to the same revision, so TypeProf still runs against one rbs.
-      def measure(bin:, gemfile:, out_path: File.join(OUT_DIR, "#{name}.out"), timeout: 600)
-        gemfile = File.join(dir, "Gemfile") if bundled
-        FileUtils.mkdir_p(File.dirname(out_path))
-        argv = ["-o", out_path, "--show-stats", "--show-errors",
-                *exclude.flat_map { ["--exclude", _1] }, *targets]
-        base = { name: name, ref: ref }
+      # A project whose setup built an rbs collection has to be analysed inside
+      # its own bundle: the collection lockfile refers to gems that ship their
+      # own signatures, and those only resolve there. `prepare!` pins rbs to the
+      # same revision, so TypeProf still runs against one rbs either way.
+      def own_bundle? = File.exist?(File.join(dir, "rbs_collection.lock.yaml"))
 
-        elapsed, status, error = execute(bin, gemfile, argv, out_path, timeout)
-        return base.merge(status: status, elapsed: elapsed, error: error) if status != :ok
+      # Run one TypeProf checkout against this project and return raw metrics.
+      def measure(worktree:, out_path:, timeout:)
+        gemfile = File.join(own_bundle? ? dir : worktree, "Gemfile")
+        FileUtils.mkdir_p(File.dirname(out_path))
+        argv = ["-o", out_path, *FLAGS, *exclude.flat_map { ["--exclude", _1] }, *targets]
+
+        run = execute(File.join(worktree, "bin/typeprof"), gemfile, argv, out_path, timeout)
+        base = { name: name, ref: ref }
+        return base.merge(run) unless run[:status] == :ok
 
         begin
-          base.merge(status: :ok, elapsed: elapsed, **Metrics.parse(File.read(out_path)))
+          metrics = Metrics.parse(File.read(out_path))
         rescue Metrics::ParseError => e
-          base.merge(status: :crash, elapsed: elapsed, error: "#{e.class}: #{e.message}")
+          # TypeProf exited cleanly and we could not read what it printed, which
+          # is a fault in this tool rather than in the commit being measured.
+          return base.merge(run, status: :unparsable, error: "#{e.class}: #{e.message}")
         end
+
+        discard_logs(out_path)
+        base.merge(run, **metrics)
       end
 
       private
@@ -88,7 +111,7 @@ module TypeProf
         cmd = ["bundle", "exec", "ruby", bin, *argv]
         # The RBS dump goes to `-o out_path`, so both streams only carry
         # progress and error messages. Keep them together for diagnosis.
-        log_path = "#{out_path}.log"
+        log_path = log_path_for(out_path)
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         pid = Process.spawn(Bench.bundle_env(gemfile), *cmd, unsetenv_others: true,
@@ -98,14 +121,23 @@ module TypeProf
         rescue Timeout::Error
           Process.kill("KILL", pid)
           Process.waitpid(pid)
-          return [elapsed_since(t), :timeout, "exceeded #{timeout}s"]
+          return { elapsed: elapsed_since(t), status: :timeout, error: "exceeded #{timeout}s" }
         end
 
         elapsed = elapsed_since(t)
-        return [elapsed, :ok, nil] if $?.success?
+        return { elapsed:, status: :ok, error: nil } if $?.success?
 
-        [elapsed, :crash, "exited with #{$?.exitstatus}: #{excerpt(log_path)}"]
+        { elapsed:, status: :crash, error: "exited with #{$?.exitstatus}: #{excerpt(log_path)}" }
       end
+
+      # The RBS dump is only an input to Metrics and runs to hundreds of KB per
+      # project, so a full backfill would leave a hundred-odd MB behind. Keep
+      # them only when the run failed and they still have something to say.
+      def discard_logs(out_path)
+        FileUtils.rm_f([out_path, log_path_for(out_path)])
+      end
+
+      def log_path_for(out_path) = "#{out_path}.log"
 
       def elapsed_since(t) = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
 
@@ -119,16 +151,10 @@ module TypeProf
       rescue SystemCallError
         ""
       end
-
-      def run!(cmd) = system(cmd, out: $stderr, exception: true)
     end
 
     module Corpus
       module_function
-
-      def project(name:, repo:, ref:, targets: ["."], exclude: [], setup: nil, bundled: false)
-        Project.new(name:, repo:, ref:, targets:, exclude:, setup:, bundled:)
-      end
 
       # Adds a gem to the target project's Gemfile unless it is already there.
       def add_gem(name, *args)
@@ -142,17 +168,22 @@ module TypeProf
       # writes records the rbs version that produced it, and TypeProf fails to
       # load a collection built by a different version. Pin the project's rbs to
       # the revision TypeProf itself uses to satisfy both.
-      def add_matching_rbs
-        revision = File.read(File.join(ROOT, "Gemfile.lock"))[%r{github\.com/ruby/rbs.*?\n\s*revision: (\h+)}m, 1]
-        raise "cannot determine TypeProf's rbs revision" unless revision
+      #
+      # Compares the pinned revision rather than the mere presence of the gem,
+      # so that re-preparing after TypeProf moves to a newer rbs re-pins instead
+      # of silently leaving the old revision in place.
+      def pin_rbs
+        want = Bench.rbs_revision(File.join(ROOT, "Gemfile.lock")) or
+          raise "cannot determine TypeProf's rbs revision"
+        return if Bench.rbs_revision("Gemfile.lock") == want
 
-        add_gem("rbs", "--github", "ruby/rbs", "--ref", revision)
+        system("bundle", "add", "rbs", "--github", "ruby/rbs", "--ref", want, exception: true)
       end
 
       # Generates RBS for a Rails app. Each step is guarded for idempotency so
       # that re-preparing an existing corpus skips the work already done.
       def setup_rails_rbs
-        add_matching_rbs
+        pin_rbs
         add_gem("rbs_rails", "-v", "0.13.1")
         system("bin/rails", "db:migrate", exception: true) unless File.exist?("db/schema.rb")
         system("bundle exec rbs collection init", exception: true) unless File.exist?("rbs_collection.yaml")
@@ -171,39 +202,36 @@ module TypeProf
       end
 
       ALL = [
-        project(
+        Project.new(
           name: "typeprof",
           repo: "https://github.com/ruby/typeprof.git",
           ref: "v0.31.1",
           exclude: ["scenario/**/*"],
         ),
-        project(
+        Project.new(
           name: "optcarrot",
           repo: "https://github.com/mame/optcarrot.git",
           ref: "9c88f5f752341087270b0e86e741d73f19e52369", # 2026-04-29 HEAD
         ),
-        project(
+        Project.new(
           name: "redmine",
           repo: "https://github.com/redmine/redmine.git",
           ref: "6.1.1",
           targets: ["app", "sig"],
           setup: -> { write_sqlite_config; setup_rails_rbs },
-          bundled: true,
         ),
         # No setup: rubygems.org's Gemfile takes its Ruby requirement from
         # `.ruby-version` (4.0.6), which this repository does not run on, so
         # bundler refuses to install and rbs_rails cannot generate signatures.
         # Measuring without Rails RBS lowers the absolute numbers but still
         # tracks relative change across TypeProf commits, which is the point.
-        project(
+        Project.new(
           name: "rubygems.org",
           repo: "https://github.com/rubygems/rubygems.org.git",
           ref: "4e36c18deef651564e7029ad8c00594f7e207d1b", # 2026-07-30 master
           targets: ["app", "lib"],
         ),
       ].freeze
-
-      def all = ALL
 
       def fetch(name)
         ALL.find { _1.name == name } or
