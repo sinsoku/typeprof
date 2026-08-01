@@ -92,8 +92,9 @@ end
 puts "Measuring #{targets.size} commit(s) with #{options[:jobs]} job(s)"
 
 # Warm the shared gem home once so that concurrent workers do not race to
-# install the same gems.
+# install the same gems, and clear anything a previous run left behind.
 runner.install_gems(File.join(ROOT, "Gemfile"))
+runner.reset_worktrees!
 
 queue = Queue.new
 targets.each { queue << _1 }

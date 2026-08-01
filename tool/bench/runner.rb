@@ -64,6 +64,15 @@ module TypeProf
                unsetenv_others: true, out: File::NULL, err: File::NULL)
       end
 
+      # Clears worktrees left behind by a run that was killed mid-flight, which
+      # would otherwise make `worktree add` fail for those commits forever.
+      # Call once before starting workers, never from one: pruning races with a
+      # concurrent `worktree add`.
+      def reset_worktrees!
+        git!("worktree", "prune")
+        FileUtils.rm_rf(WORKTREE_DIR)
+      end
+
       private
 
       def collect(sha, worktree)
