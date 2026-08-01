@@ -72,12 +72,14 @@ module TypeProf
 
       def execute(bin, gemfile, argv, out_path, timeout)
         cmd = ["bundle", "exec", "ruby", bin, *argv]
-        err_path = "#{out_path}.err"
+        # The RBS dump goes to `-o out_path`, so both streams only carry
+        # progress and error messages. Keep them together for diagnosis.
+        log_path = "#{out_path}.log"
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         Bundler.with_unbundled_env do
           pid = Process.spawn({ "BUNDLE_GEMFILE" => gemfile }, *cmd,
-                              chdir: dir, out: File::NULL, err: err_path)
+                              chdir: dir, [:out, :err] => log_path)
           begin
             Timeout.timeout(timeout) { Process.waitpid(pid) }
           rescue Timeout::Error
@@ -90,7 +92,7 @@ module TypeProf
         elapsed = elapsed_since(t)
         return [elapsed, :ok, nil] if $?.success?
 
-        [elapsed, :crash, "exited with #{$?.exitstatus}: #{tail(err_path)}"]
+        [elapsed, :crash, "exited with #{$?.exitstatus}: #{tail(log_path)}"]
       end
 
       def elapsed_since(t) = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
