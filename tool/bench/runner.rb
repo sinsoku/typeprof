@@ -29,7 +29,17 @@ module TypeProf
 
       def data_path(sha) = File.join(DATA_DIR, "#{sha}.json")
 
-      def measured?(sha) = File.exist?(data_path(sha))
+      # Data from an earlier run only counts if it covers every project we were
+      # asked for. Otherwise a run narrowed with `--projects` would make later
+      # full runs skip the commit and leave the gap in place.
+      def measured?(sha)
+        return false unless File.exist?(data_path(sha))
+
+        measured = JSON.parse(File.read(data_path(sha)))["projects"].to_a.map { _1["name"] }
+        (@projects.map(&:name) - measured).empty?
+      rescue JSON::ParserError
+        false
+      end
 
       # Measures `sha` and writes bench_data/<sha>.json. Returns the data Hash.
       def run(sha)
