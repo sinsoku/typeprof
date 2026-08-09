@@ -9,19 +9,19 @@ module TypeProf
   module Bench
     # Measures one TypeProf commit against the corpus.
     #
-    # Each commit is checked out into its own git worktree rather than checked
-    # out in place. That keeps the repository's own working tree untouched (so
-    # uncommitted work is fine), leaves HEAD alone if a run dies halfway, and
-    # allows several commits to be measured concurrently.
+    # The commit is checked out into a git worktree rather than checked out in
+    # place, so the repository's own working tree stays untouched (uncommitted
+    # work is fine) and HEAD is left alone even if a run dies halfway.
     class Runner
       WORKTREE_DIR = File.join(ROOT, "tmp", "bench_wt")
       DATA_DIR = File.join(ROOT, "bench_data")
 
-      def initialize(projects:, timeout:, jobs:)
+      # A hang is one of the failures worth recording, so give each project a
+      # generous ceiling: the slowest today is redmine at 13 seconds.
+      TIMEOUT = 600
+
+      def initialize(projects:)
         @projects = projects
-        @timeout = timeout
-        @jobs = jobs
-        @install_lock = Mutex.new
       end
 
       def data_path(sha) = File.join(DATA_DIR, "#{sha}.json")
@@ -61,9 +61,7 @@ module TypeProf
         Bench.git!("worktree", "add", "-q", "--detach", worktree, sha)
       rescue RuntimeError
         # A run killed mid-flight leaves the worktree registered without its
-        # directory, and `add` then refuses the path forever. Pruning only
-        # drops entries whose directory is gone, so it cannot disturb a
-        # concurrent worker whose worktree is already checked out.
+        # directory, and `add` then refuses the path forever.
         Bench.git!("worktree", "prune")
         Bench.git!("worktree", "add", "-q", "--detach", worktree, sha)
       end
@@ -82,20 +80,17 @@ module TypeProf
         result = project.measure(
           worktree: worktree,
           out_path: File.join(OUT_DIR, sha, "#{project.name}.out"),
-          timeout: @timeout,
+          timeout: TIMEOUT,
         )
         warn "    #{project.name}: #{result[:status]} #{result[:error]}" if result[:status] != :ok
         result
       end
 
-      # Serialised because concurrent workers otherwise install into the same
-      # gem home at once. Almost always a no-op: consecutive commits share a
-      # lockfile, so bundler finds everything already present.
+      # Almost always a no-op: consecutive commits share a lockfile, so bundler
+      # finds everything already present.
       def install_gems(gemfile)
-        @install_lock.synchronize do
-          system(Bench.bundle_env(gemfile), "bundle", "install", "--quiet",
-                 unsetenv_others: true, out: File::NULL, err: File::NULL)
-        end
+        system(Bench.bundle_env(gemfile), "bundle", "install", "--quiet",
+               unsetenv_others: true, out: File::NULL, err: File::NULL)
       end
 
       def metadata(sha, worktree, timestamp, date)
@@ -106,7 +101,6 @@ module TypeProf
           typeprof_version: typeprof_version(worktree),
           rbs_revision: Bench.rbs_revision(File.join(worktree, "Gemfile.lock")),
           measured_at: Time.now.iso8601,
-          jobs: @jobs,
           flags: FLAGS,
           host: { ruby: RUBY_VERSION, arch: RUBY_PLATFORM },
         }

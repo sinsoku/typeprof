@@ -17,9 +17,8 @@ module TypeProf
     # `--show-errors` shifts the typed slot counts slightly.
     FLAGS = ["--show-stats", "--show-errors"].freeze
 
-    # `Bundler.with_unbundled_env` swaps ENV in place and restores it after the
-    # block, which races once workers run in parallel. Build the environment
-    # once and hand it to each child process instead.
+    # Built once and handed to each child, rather than wrapping every spawn in
+    # `Bundler.with_unbundled_env`, which swaps ENV in place around a block.
     UNBUNDLED_ENV = Bundler.unbundled_env.freeze
 
     module_function
@@ -96,9 +95,7 @@ module TypeProf
         begin
           metrics = Metrics.parse(File.read(out_path))
         rescue Metrics::ParseError => e
-          # TypeProf exited cleanly and we could not read what it printed, which
-          # is a fault in this tool rather than in the commit being measured.
-          return base.merge(run, status: :unparsable, error: "#{e.class}: #{e.message}")
+          return base.merge(run, status: :crash, error: "#{e.class}: #{e.message}")
         end
 
         discard_logs(out_path)
