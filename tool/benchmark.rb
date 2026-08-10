@@ -2,14 +2,13 @@
 # frozen_string_literal: true
 
 # Replays the benchmark projects over TypeProf's git history and stores one
-# JSON file per commit under bench_data/.
+# JSON file per commit under benchmark_data/.
 #
 # Data collection is deliberately independent of CI: history can be rebuilt at
 # any time, and a metric added later can be backfilled over past commits.
 #
-#   ruby tool/bench/prepare.rb              # once, to set the projects up
-#   ruby tool/backfill_bench.rb --limit 1   # measure HEAD
-#   ruby tool/backfill_bench.rb             # every commit in range
+#   ruby tool/benchmark.rb --limit 1   # measure HEAD
+#   ruby tool/benchmark.rb             # every commit in range
 #
 # Commits are measured one at a time: `elapsed` is one of the metrics, and
 # concurrent runs would contend for CPU and distort it. The full range takes
@@ -17,7 +16,7 @@
 
 require "optparse"
 
-require_relative "bench/runner"
+require_relative "benchmark/runner"
 
 Bench = TypeProf::Bench
 
@@ -27,7 +26,7 @@ STATS_SINCE = "2fc33f77"
 options = { rev: "HEAD", force: false }
 
 OptionParser.new do |opt|
-  opt.banner = "Usage: ruby tool/backfill_bench.rb [options]"
+  opt.banner = "Usage: ruby tool/benchmark.rb [options]"
   opt.on("--rev REV", "Measure commits reachable from REV (default: HEAD)") { options[:rev] = _1 }
   opt.on("--limit N", Integer, "Measure at most N commits, newest first") { options[:limit] = _1 }
   opt.on("--force", "Re-measure commits that already have data") { options[:force] = true }
@@ -55,6 +54,14 @@ end
 
 puts "Measuring #{targets.size} commit(s)"
 
+# Preparing is idempotent and costs a handful of file checks once the projects
+# are in place, so there is no separate command for it. The first run clones
+# them and generates RBS for redmine, which takes several minutes.
+Bench::Projects::ALL.each do |project|
+  puts "Preparing #{project.name}" unless Dir.exist?(project.dir)
+  project.prepare!
+end
+
 failures = targets.filter_map do |commit|
   data = runner.run(commit.sha, timestamp: commit.timestamp, date: commit.date)
   summary = data[:error] || data[:projects].map { "#{_1[:name]}=#{_1[:status]}" }.join(" ")
@@ -65,7 +72,7 @@ rescue => e
 end
 
 puts
-puts "bench_data/ now holds #{Dir.glob(File.join(Bench::Runner::DATA_DIR, "*.json")).size} file(s)"
+puts "benchmark_data/ now holds #{Dir.glob(File.join(Bench::Runner::DATA_DIR, "*.json")).size} file(s)"
 
 unless failures.empty?
   warn "#{failures.size} commit(s) could not be measured:"

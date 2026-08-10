@@ -13,8 +13,8 @@ module TypeProf
     # place, so the repository's own working tree stays untouched (uncommitted
     # work is fine) and HEAD is left alone even if a run dies halfway.
     class Runner
-      WORKTREE_DIR = File.join(ROOT, "tmp", "bench_wt")
-      DATA_DIR = File.join(ROOT, "bench_data")
+      WORKTREE_DIR = File.join(ROOT, "tmp", "benchmark", "wt")
+      DATA_DIR = File.join(ROOT, "benchmark_data")
 
       # A hang is one of the failures worth recording, so the ceiling is only
       # there to stop one; the slowest project today takes 13 seconds.

@@ -1,6 +1,6 @@
 /tmp/
 /pkg/
-/bench_data/
+/benchmark_data/
 dog_bench.stackprof.dump
 dog_bench.pf2profile
 dog_bench.json

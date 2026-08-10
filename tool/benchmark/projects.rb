@@ -10,8 +10,8 @@ require_relative "metrics"
 module TypeProf
   module Bench
     ROOT = File.expand_path("../..", __dir__)
-    PROJECTS_DIR = File.join(ROOT, "tmp", "bench_projects")
-    OUT_DIR = File.join(ROOT, "tmp", "bench_out")
+    PROJECTS_DIR = File.join(ROOT, "tmp", "benchmark", "projects")
+    OUT_DIR = File.join(ROOT, "tmp", "benchmark", "out")
 
     # Recorded alongside the numbers because the flags affect them: enabling
     # `--show-errors` shifts the typed slot counts slightly.
