@@ -3,11 +3,11 @@
 require "json"
 require "time"
 
-require_relative "corpus"
+require_relative "projects"
 
 module TypeProf
   module Bench
-    # Measures one TypeProf commit against the corpus.
+    # Measures one TypeProf commit against the benchmark projects.
     #
     # The commit is checked out into a git worktree rather than checked out in
     # place, so the repository's own working tree stays untouched (uncommitted

@@ -1,19 +1,19 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Clones and sets up the benchmark corpus under tmp/bench_corpus.
+# Clones and sets up the benchmark projects under tmp/bench_projects.
 #
-# Run once per project. Backfilling replays this corpus over many TypeProf
-# commits, so setup must not happen on every measurement.
+# Run once per project. Backfilling replays them over many TypeProf commits, so
+# setup must not happen on every measurement.
 #
 #   ruby tool/bench/prepare.rb              # all projects
 #   ruby tool/bench/prepare.rb optcarrot    # only the named ones
 
-require_relative "corpus"
+require_relative "projects"
 
 include TypeProf::Bench # rubocop:disable Style/MixinUsage
 
-projects = ARGV.empty? ? Corpus::ALL : ARGV.map { Corpus.fetch(_1) }
+projects = ARGV.empty? ? Projects::ALL : ARGV.map { Projects.fetch(_1) }
 
 projects.each do |project|
   puts "==> #{project.name} (#{project.ref})"
@@ -25,4 +25,4 @@ projects.each do |project|
 end
 
 puts
-puts "Prepared #{projects.size} project(s) under #{CORPUS_DIR}"
+puts "Prepared #{projects.size} project(s) under #{PROJECTS_DIR}"

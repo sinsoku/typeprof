@@ -1,13 +1,13 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Replays the benchmark corpus over TypeProf's git history and stores one JSON
-# file per commit under bench_data/.
+# Replays the benchmark projects over TypeProf's git history and stores one
+# JSON file per commit under bench_data/.
 #
 # Data collection is deliberately independent of CI: history can be rebuilt at
 # any time, and a metric added later can be backfilled over past commits.
 #
-#   ruby tool/bench/prepare.rb                       # once, to set up the corpus
+#   ruby tool/bench/prepare.rb                       # once, to set the projects up
 #   ruby tool/backfill_bench.rb --limit 1            # measure HEAD
 #   ruby tool/backfill_bench.rb --sampling monthly   # one commit per month
 #   ruby tool/backfill_bench.rb                      # every commit in range
@@ -47,7 +47,7 @@ def select_commits(options)
   list.reverse # oldest first, so a partial run still builds history forward
 end
 
-runner = Runner.new(projects: options[:projects] ? options[:projects].map { Corpus.fetch(_1) } : Corpus::ALL)
+runner = Runner.new(projects: options[:projects] ? options[:projects].map { Projects.fetch(_1) } : Projects::ALL)
 
 targets = select_commits(options)
 targets = targets.reject { runner.measured?(_1.sha) } unless options[:force]

@@ -10,7 +10,7 @@ require_relative "metrics"
 module TypeProf
   module Bench
     ROOT = File.expand_path("../..", __dir__)
-    CORPUS_DIR = File.join(ROOT, "tmp", "bench_corpus")
+    PROJECTS_DIR = File.join(ROOT, "tmp", "bench_projects")
     OUT_DIR = File.join(ROOT, "tmp", "bench_out")
 
     # Recorded alongside the numbers because the flags affect them: enabling
@@ -31,7 +31,7 @@ module TypeProf
     def git!(*args, dir: ROOT) = system("git", "-C", dir, *args, exception: true)
 
     # The revision a lockfile pins ruby/rbs to, or nil if it does not use git.
-    # Both the corpus and the measured commit have to agree on this.
+    # The project and the measured commit have to agree on this.
     def rbs_revision(lock_path)
       sources = Bundler::LockfileParser.new(File.read(lock_path)).sources
       sources.grep(Bundler::Source::Git).find { _1.name == "rbs" }&.revision
@@ -43,11 +43,11 @@ module TypeProf
     #
     # `ref` is pinned so that only TypeProf changes between measurements. `setup`
     # runs once when the project is prepared, not on every measurement, because
-    # backfilling replays the same corpus over dozens of TypeProf commits.
+    # backfilling replays the same projects over dozens of TypeProf commits.
     Project = Data.define(:name, :repo, :ref, :targets, :exclude, :setup) do
       def initialize(targets: ["."], exclude: [], setup: nil, **) = super
 
-      def dir = File.join(CORPUS_DIR, name)
+      def dir = File.join(PROJECTS_DIR, name)
 
       def cloned? = Dir.exist?(File.join(dir, ".git"))
 
@@ -66,7 +66,7 @@ module TypeProf
       end
 
       # Clone and run the project's own setup. Setup steps are expected to be
-      # idempotent so that re-running prepare on an existing corpus is cheap.
+      # idempotent so that re-running prepare on an existing checkout is cheap.
       def prepare!
         clone!
         return unless setup
@@ -150,7 +150,7 @@ module TypeProf
       end
     end
 
-    module Corpus
+    module Projects
       module_function
 
       # Adds a gem to the target project's Gemfile unless it is already there.
@@ -178,7 +178,7 @@ module TypeProf
       end
 
       # Generates RBS for a Rails app. Each step is guarded for idempotency so
-      # that re-preparing an existing corpus skips the work already done.
+      # that re-preparing an existing checkout skips the work already done.
       def setup_rails_rbs
         pin_rbs
         add_gem("rbs_rails", "-v", "0.13.1")
