@@ -11,9 +11,9 @@
 
 require_relative "projects"
 
-include TypeProf::Bench # rubocop:disable Style/MixinUsage
+Bench = TypeProf::Bench
 
-projects = ARGV.empty? ? Projects::ALL : ARGV.map { Projects.fetch(_1) }
+projects = ARGV.empty? ? Bench::Projects::ALL : ARGV.map { Bench::Projects.fetch(_1) }
 
 projects.each do |project|
   puts "==> #{project.name} (#{project.ref})"
@@ -25,4 +25,4 @@ projects.each do |project|
 end
 
 puts
-puts "Prepared #{projects.size} project(s) under #{PROJECTS_DIR}"
+puts "Prepared #{projects.size} project(s) under #{Bench::PROJECTS_DIR}"

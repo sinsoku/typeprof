@@ -19,7 +19,7 @@ require "optparse"
 
 require_relative "bench/runner"
 
-include TypeProf::Bench # rubocop:disable Style/MixinUsage
+Bench = TypeProf::Bench
 
 # `--show-stats` was added here; commits before it cannot be measured.
 STATS_SINCE = "2fc33f77"
@@ -36,14 +36,14 @@ end.parse!
 Commit = Data.define(:sha, :timestamp, :date)
 
 def select_commits(options)
-  out = git("rev-list", "--first-parent", "--format=%H %ct %cs", "--no-commit-header",
-            "#{STATS_SINCE}..#{options[:rev]}")
+  out = Bench.git("rev-list", "--first-parent", "--format=%H %ct %cs", "--no-commit-header",
+                  "#{STATS_SINCE}..#{options[:rev]}")
   list = out.lines.map { Commit.new(*_1.split(" ").then { |s, t, d| [s, t.to_i, d] }) }
   list = list.first(options[:limit]) if options[:limit]
   list.reverse # oldest first, so a partial run still builds history forward
 end
 
-runner = Runner.new
+runner = Bench::Runner.new
 
 targets = select_commits(options)
 targets = targets.reject { runner.measured?(_1.sha) } unless options[:force]
@@ -65,7 +65,7 @@ rescue => e
 end
 
 puts
-puts "bench_data/ now holds #{Dir.glob(File.join(Runner::DATA_DIR, "*.json")).size} file(s)"
+puts "bench_data/ now holds #{Dir.glob(File.join(Bench::Runner::DATA_DIR, "*.json")).size} file(s)"
 
 unless failures.empty?
   warn "#{failures.size} commit(s) could not be measured:"
