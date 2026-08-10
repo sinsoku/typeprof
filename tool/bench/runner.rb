@@ -20,21 +20,9 @@ module TypeProf
       # generous ceiling: the slowest today is redmine at 13 seconds.
       TIMEOUT = 600
 
-      def initialize(projects:)
-        @projects = projects
-      end
-
       def data_path(sha) = File.join(DATA_DIR, "#{sha}.json")
 
-      # Data from an earlier run only counts if it covers every project we were
-      # asked for. Otherwise a run narrowed with `--projects` would make later
-      # full runs skip the commit and leave the gap in place.
-      def measured?(sha)
-        measured = JSON.parse(File.read(data_path(sha)))["projects"].to_a.map { _1["name"] }
-        (@projects.map(&:name) - measured).empty?
-      rescue Errno::ENOENT, JSON::ParserError
-        false
-      end
+      def measured?(sha) = File.exist?(data_path(sha))
 
       # Measures `sha` and writes bench_data/<sha>.json. Returns the data Hash.
       # The commit's date comes from the caller, which already listed it.
@@ -73,7 +61,7 @@ module TypeProf
           return data.merge(error: "bundle install failed", projects: [])
         end
 
-        data.merge(projects: @projects.map { measure(_1, sha, worktree) })
+        data.merge(projects: Projects::ALL.map { measure(_1, sha, worktree) })
       end
 
       def measure(project, sha, worktree)
