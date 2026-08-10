@@ -23,7 +23,6 @@ module TypeProf
 
     module_function
 
-    # Environment for a child that should resolve gems from `gemfile`.
     def bundle_env(gemfile) = UNBUNDLED_ENV.merge("BUNDLE_GEMFILE" => gemfile)
 
     def git(*args, dir: ROOT) = IO.popen(["git", "-C", dir, *args], &:read)
@@ -39,8 +38,6 @@ module TypeProf
       nil
     end
 
-    # A project to run TypeProf against.
-    #
     # `ref` is pinned so that only TypeProf changes between measurements. `setup`
     # runs once when the project is prepared, not on every measurement, because
     # backfilling replays the same projects over dozens of TypeProf commits.
@@ -49,14 +46,12 @@ module TypeProf
 
       def dir = File.join(PROJECTS_DIR, name)
 
-      def cloned? = Dir.exist?(File.join(dir, ".git"))
-
       # Unified init + fetch + checkout for any ref (SHA / tag / branch).
       # `git clone --branch` is noisier (annotated tags emit a "is not a commit"
       # warning + detached HEAD advice) and doesn't accept SHAs. Fetching by SHA
       # works thanks to GitHub's uploadpack.allowAnySHA1InWant.
       def clone!
-        return if cloned?
+        return if Dir.exist?(File.join(dir, ".git"))
 
         FileUtils.mkdir_p(dir)
         Bench.git!("init", "-q", dir: dir)
@@ -82,7 +77,6 @@ module TypeProf
       # same revision, so TypeProf still runs against one rbs either way.
       def own_bundle? = File.exist?(File.join(dir, "rbs_collection.lock.yaml"))
 
-      # Run one TypeProf checkout against this project and return raw metrics.
       def measure(worktree:, out_path:, timeout:)
         gemfile = File.join(own_bundle? ? dir : worktree, "Gemfile")
         FileUtils.mkdir_p(File.dirname(out_path))
@@ -98,7 +92,9 @@ module TypeProf
           return base.merge(run, status: :crash, error: "#{e.class}: #{e.message}")
         end
 
-        discard_logs(out_path)
+        # The dump is only an input to Metrics and runs to hundreds of KB per
+        # project; a failed run keeps its own for diagnosis.
+        FileUtils.rm_f([out_path, log_path_for(out_path)])
         base.merge(run, **metrics)
       end
 
@@ -127,24 +123,14 @@ module TypeProf
         { elapsed:, status: :crash, error: "exited with #{$?.exitstatus}: #{excerpt(log_path)}" }
       end
 
-      # The RBS dump is only an input to Metrics and runs to hundreds of KB per
-      # project, so a full backfill would leave a hundred-odd MB behind. Keep
-      # them only when the run failed and they still have something to say.
-      def discard_logs(out_path)
-        FileUtils.rm_f([out_path, log_path_for(out_path)])
-      end
-
       def log_path_for(out_path) = "#{out_path}.log"
 
       def elapsed_since(t) = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
 
-      # Both ends of the log: a Ruby exception puts its message on the first
-      # line and the frames at the end, and either can be the informative part.
-      def excerpt(path, lines = 3)
-        content = File.readlines(path).map(&:strip).reject(&:empty?)
-        return content.join(" / ") if content.size <= lines * 2
-
-        (content.first(lines) + ["..."] + content.last(lines)).join(" / ")
+      # A Ruby exception puts its message on the first line; the frames at the
+      # end are always the same three and say nothing.
+      def excerpt(path)
+        File.readlines(path).map(&:strip).reject(&:empty?).first(3).join(" / ")
       rescue SystemCallError
         ""
       end
@@ -153,7 +139,6 @@ module TypeProf
     module Projects
       module_function
 
-      # Adds a gem to the target project's Gemfile unless it is already there.
       def add_gem(name, *args)
         return if File.read("Gemfile").match?(/^\s*gem ["']#{Regexp.escape(name)}["']/)
 
@@ -165,10 +150,6 @@ module TypeProf
       # writes records the rbs version that produced it, and TypeProf fails to
       # load a collection built by a different version. Pin the project's rbs to
       # the revision TypeProf itself uses to satisfy both.
-      #
-      # Compares the pinned revision rather than the mere presence of the gem,
-      # so that re-preparing after TypeProf moves to a newer rbs re-pins instead
-      # of silently leaving the old revision in place.
       def pin_rbs
         want = Bench.rbs_revision(File.join(ROOT, "Gemfile.lock")) or
           raise "cannot determine TypeProf's rbs revision"
@@ -177,8 +158,7 @@ module TypeProf
         system("bundle", "add", "rbs", "--github", "ruby/rbs", "--ref", want, exception: true)
       end
 
-      # Generates RBS for a Rails app. Each step is guarded for idempotency so
-      # that re-preparing an existing checkout skips the work already done.
+      # Generates RBS for a Rails app.
       def setup_rails_rbs
         pin_rbs
         add_gem("rbs_rails", "-v", "0.13.1")

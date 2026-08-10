@@ -16,15 +16,14 @@ module TypeProf
       WORKTREE_DIR = File.join(ROOT, "tmp", "bench_wt")
       DATA_DIR = File.join(ROOT, "bench_data")
 
-      # A hang is one of the failures worth recording, so give each project a
-      # generous ceiling: the slowest today is redmine at 13 seconds.
+      # A hang is one of the failures worth recording, so the ceiling is only
+      # there to stop one; the slowest project today takes 13 seconds.
       TIMEOUT = 600
 
       def data_path(sha) = File.join(DATA_DIR, "#{sha}.json")
 
       def measured?(sha) = File.exist?(data_path(sha))
 
-      # Measures `sha` and writes bench_data/<sha>.json. Returns the data Hash.
       # The commit's date comes from the caller, which already listed it.
       def run(sha, timestamp:, date:)
         worktree = File.join(WORKTREE_DIR, sha)
@@ -43,13 +42,10 @@ module TypeProf
 
       private
 
+      # A run killed mid-flight leaves the worktree registered without its
+      # directory, and `add` then refuses the path forever.
       def add_worktree(sha, worktree)
-        FileUtils.mkdir_p(WORKTREE_DIR)
         FileUtils.rm_rf(worktree)
-        Bench.git!("worktree", "add", "-q", "--detach", worktree, sha)
-      rescue RuntimeError
-        # A run killed mid-flight leaves the worktree registered without its
-        # directory, and `add` then refuses the path forever.
         Bench.git!("worktree", "prune")
         Bench.git!("worktree", "add", "-q", "--detach", worktree, sha)
       end
@@ -96,8 +92,6 @@ module TypeProf
 
       def typeprof_version(worktree)
         File.read(File.join(worktree, "lib/typeprof/version.rb"))[/VERSION = "([^"]+)"/, 1]
-      rescue SystemCallError
-        nil
       end
     end
   end

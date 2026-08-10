@@ -30,8 +30,6 @@ module TypeProf
       class ParseError < StandardError; end
 
       class << self
-        # Returns a Hash of raw counts. Raises ParseError if the statistics
-        # block is missing, which means the run did not complete.
         def parse(text)
           idx = text.rindex(STATS_HEADER)
           raise ParseError, "statistics block not found" unless idx
