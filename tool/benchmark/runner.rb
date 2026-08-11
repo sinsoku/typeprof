@@ -7,9 +7,10 @@ require_relative "projects"
 
 module TypeProf
   module Bench
-    # Measures one TypeProf commit against the benchmark projects.
+    # Measures a TypeProf checkout against the benchmark projects: a committed
+    # sha into the archive, or the working tree as it stands.
     #
-    # The commit is checked out into a git worktree rather than checked out in
+    # A commit is checked out into a git worktree rather than checked out in
     # place, so the repository's own working tree stays untouched (uncommitted
     # work is fine) and HEAD is left alone even if a run dies halfway.
     class Runner
@@ -51,6 +52,17 @@ module TypeProf
         end
       end
 
+      # Measures the working tree as it is, uncommitted changes included. The
+      # result goes to the caller, not the archive: a dirty tree's numbers
+      # correspond to no commit.
+      def run_working_tree
+        install_gems!(File.join(ROOT, "Gemfile"))
+        results = Projects::ALL.map { measure(_1, "working-tree", ROOT) }
+        sha = Bench.git("rev-parse", "HEAD").strip
+        dirty = !Bench.git("status", "--porcelain").empty?
+        { sha: sha, dirty: dirty }.merge(provenance(ROOT), projects: results)
+      end
+
       private
 
       # A run killed mid-flight leaves the worktree registered without its
@@ -80,10 +92,12 @@ module TypeProf
       end
 
       def metadata(sha, worktree, timestamp, date)
+        { sha: sha, commit_timestamp: timestamp, commit_date: date }.merge(provenance(worktree))
+      end
+
+      # The conditions the measurement ran under, recorded with every result.
+      def provenance(worktree)
         {
-          sha: sha,
-          commit_timestamp: timestamp,
-          commit_date: date,
           typeprof_version: typeprof_version(worktree),
           rbs_revision: Bench.rbs_revision(File.join(worktree, "Gemfile.lock")),
           measured_at: Time.now.iso8601,

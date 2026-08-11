@@ -1,19 +1,24 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Replays the benchmark projects over TypeProf's git history and stores one
-# JSON file per commit under benchmark_data/.
+# Measures TypeProf against the benchmark projects.
 #
-# Data collection is deliberately independent of CI: history can be rebuilt at
-# any time, and a metric added later can be backfilled over past commits.
+# With no arguments it measures the working tree as it is — uncommitted
+# changes included — prints the results as JSON, and fails if any project does
+# not analyse cleanly. With --rev it replays committed history into
+# benchmark_data/, one JSON file per (commit, project); that archive can be
+# rebuilt at any time, and a metric or project added later can be backfilled
+# over past commits.
 #
-#   ruby tool/benchmark.rb --limit 1   # measure HEAD
-#   ruby tool/benchmark.rb             # every commit in range
+#   ruby tool/benchmark.rb                      # working tree -> stdout
+#   ruby tool/benchmark.rb --rev HEAD           # backfill every commit in range
+#   ruby tool/benchmark.rb --rev HEAD --limit 1 # archive HEAD
 #
 # Commits are measured one at a time: `elapsed` is one of the metrics, and
 # concurrent runs would contend for CPU and distort it. The full range takes
 # about half an hour.
 
+require "json"
 require "optparse"
 
 require_relative "benchmark/runner"
@@ -23,14 +28,35 @@ Bench = TypeProf::Bench
 # `--show-stats` was added here; commits before it cannot be measured.
 STATS_SINCE = "2fc33f77"
 
-options = { rev: "HEAD", force: false }
+options = { force: false }
 
 OptionParser.new do |opt|
   opt.banner = "Usage: ruby tool/benchmark.rb [options]"
-  opt.on("--rev REV", "Measure commits reachable from REV (default: HEAD)") { options[:rev] = _1 }
+  opt.on("--rev REV", "Archive commits reachable from REV instead of measuring the working tree") { options[:rev] = _1 }
   opt.on("--limit N", Integer, "Measure at most N commits, newest first") { options[:limit] = _1 }
   opt.on("--force", "Re-measure commits that already have data") { options[:force] = true }
 end.parse!
+
+# Preparing is idempotent and costs a handful of file checks once the projects
+# are in place. The first run clones them and generates RBS for redmine, which
+# takes several minutes.
+def prepare_projects
+  Bench::Projects::ALL.each do |project|
+    warn "Preparing #{project.name}" unless Dir.exist?(project.dir)
+    project.prepare!
+  end
+end
+
+runner = Bench::Runner.new
+
+unless options[:rev]
+  abort "--limit and --force require --rev" if options[:limit] || options[:force]
+
+  prepare_projects
+  data = runner.run_working_tree
+  puts JSON.pretty_generate(data)
+  exit data[:projects].all? { _1[:status] == :ok }
+end
 
 Commit = Data.define(:sha, :timestamp, :date)
 
@@ -42,8 +68,6 @@ def select_commits(options)
   list.reverse # oldest first, so a partial run still builds history forward
 end
 
-runner = Bench::Runner.new
-
 targets = select_commits(options)
 targets = targets.reject { runner.measured?(_1.sha) } unless options[:force]
 
@@ -53,14 +77,7 @@ if targets.empty?
 end
 
 puts "Measuring #{targets.size} commit(s)"
-
-# Preparing is idempotent and costs a handful of file checks once the projects
-# are in place, so there is no separate command for it. The first run clones
-# them and generates RBS for redmine, which takes several minutes.
-Bench::Projects::ALL.each do |project|
-  puts "Preparing #{project.name}" unless Dir.exist?(project.dir)
-  project.prepare!
-end
+prepare_projects
 
 failures = targets.filter_map do |commit|
   results = runner.run(commit.sha, timestamp: commit.timestamp, date: commit.date,
