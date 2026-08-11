@@ -63,8 +63,9 @@ Bench::Projects::ALL.each do |project|
 end
 
 failures = targets.filter_map do |commit|
-  data = runner.run(commit.sha, timestamp: commit.timestamp, date: commit.date)
-  summary = data[:error] || data[:projects].map { "#{_1[:name]}=#{_1[:status]}" }.join(" ")
+  results = runner.run(commit.sha, timestamp: commit.timestamp, date: commit.date,
+                       force: options[:force])
+  summary = results.map { "#{_1[:name]}=#{_1[:status]}" }.join(" ")
   puts "#{commit.sha[0, 10]} #{commit.date}  #{summary}"
   nil
 rescue => e
@@ -72,7 +73,7 @@ rescue => e
 end
 
 puts
-puts "benchmark_data/ now holds #{Dir.glob(File.join(Bench::Runner::DATA_DIR, "*.json")).size} file(s)"
+puts "benchmark_data/ now holds #{Dir.glob(File.join(Bench::Runner::DATA_DIR, "*")).size} commit(s)"
 
 unless failures.empty?
   warn "#{failures.size} commit(s) could not be measured:"

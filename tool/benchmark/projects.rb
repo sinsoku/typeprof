@@ -209,11 +209,6 @@ module TypeProf
           targets: ["app", "lib"],
         ),
       ].freeze
-
-      def fetch(name)
-        ALL.find { _1.name == name } or
-          raise ArgumentError, "unknown project: #{name.inspect} (known: #{ALL.map(&:name).join(", ")})"
-      end
     end
   end
 end

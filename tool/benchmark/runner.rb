@@ -20,24 +20,35 @@ module TypeProf
       # there to stop one; the slowest project today takes 13 seconds.
       TIMEOUT = 600
 
-      def data_path(sha) = File.join(DATA_DIR, "#{sha}.json")
+      def data_path(sha, name) = File.join(DATA_DIR, sha, "#{name}.json")
 
-      def measured?(sha) = File.exist?(data_path(sha))
+      def measured?(sha) = Projects::ALL.all? { File.exist?(data_path(sha, _1.name)) }
 
+      # Measures the projects that have no file yet and returns their results,
+      # so adding a project later fills only the gap. Each file is
+      # self-contained: the metadata is repeated per project because separate
+      # backfills may measure the same commit under different conditions.
       # The commit's date comes from the caller, which already listed it.
-      def run(sha, timestamp:, date:)
+      def run(sha, timestamp:, date:, force: false)
         worktree = File.join(WORKTREE_DIR, sha)
 
         add_worktree(sha, worktree)
         begin
-          data = collect(sha, worktree, timestamp, date)
+          install_gems!(File.join(worktree, "Gemfile"))
+          meta = metadata(sha, worktree, timestamp, date)
+
+          Projects::ALL.filter_map do |project|
+            path = data_path(sha, project.name)
+            next if !force && File.exist?(path)
+
+            result = measure(project, sha, worktree)
+            FileUtils.mkdir_p(File.dirname(path))
+            File.write(path, JSON.pretty_generate(meta.merge(result)))
+            result
+          end
         ensure
           Bench.git!("worktree", "remove", "--force", worktree)
         end
-
-        FileUtils.mkdir_p(DATA_DIR)
-        File.write(data_path(sha), JSON.pretty_generate(data))
-        data
       end
 
       private
@@ -48,16 +59,6 @@ module TypeProf
         FileUtils.rm_rf(worktree)
         Bench.git!("worktree", "prune")
         Bench.git!("worktree", "add", "-q", "--detach", worktree, sha)
-      end
-
-      def collect(sha, worktree, timestamp, date)
-        data = metadata(sha, worktree, timestamp, date)
-
-        unless install_gems(File.join(worktree, "Gemfile"))
-          return data.merge(error: "bundle install failed", projects: [])
-        end
-
-        data.merge(projects: Projects::ALL.map { measure(_1, sha, worktree) })
       end
 
       def measure(project, sha, worktree)
@@ -72,9 +73,10 @@ module TypeProf
 
       # Almost always a no-op: consecutive commits share a lockfile, so bundler
       # finds everything already present.
-      def install_gems(gemfile)
+      def install_gems!(gemfile)
         system(Bench.bundle_env(gemfile), "bundle", "install", "--quiet",
-               unsetenv_others: true, out: File::NULL, err: File::NULL)
+               unsetenv_others: true, out: File::NULL, err: File::NULL) or
+          raise "bundle install failed for #{gemfile}"
       end
 
       def metadata(sha, worktree, timestamp, date)
