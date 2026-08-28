@@ -5,6 +5,8 @@ on:
     branches: [master, dev]
   workflow_dispatch:
 
+# Only pushes from master append to the published history; every branch still
+# gets the summary and alert comparison against the last published point.
 # The gh-pages history is append-only per run; concurrent runs would race the
 # auto-push.
 concurrency:
@@ -21,7 +23,7 @@ jobs:
     steps:
       # Working-tree mode measures the checked-out commit as-is, so a shallow
       # clone is enough.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.4'
@@ -30,7 +32,7 @@ jobs:
       # The benchmark projects are self-contained under this path, including
       # redmine's vendored gems and rbs collection. A miss re-clones and
       # regenerates everything, which takes ~15 minutes.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: tmp/benchmark/projects
           key: benchmark-projects-${{ hashFiles('tool/benchmark/projects.rb', 'Gemfile.lock') }}
@@ -47,11 +49,11 @@ jobs:
       - name: Publish speed
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          name: 'TypeProf Speed'
+          name: 'Analysis time'
           tool: 'customSmallerIsBetter'
           output-file-path: tmp/benchmark/speed.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
+          auto-push: ${{ github.ref == 'refs/heads/master' }}
           summary-always: true
           # Shared runners vary by 10-20%; only flag clear regressions.
           alert-threshold: '150%'
@@ -61,11 +63,11 @@ jobs:
       - name: Publish coverage
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          name: 'TypeProf Coverage'
+          name: 'Type coverage'
           tool: 'customBiggerIsBetter'
           output-file-path: tmp/benchmark/coverage.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
+          auto-push: ${{ github.ref == 'refs/heads/master' }}
           summary-always: true
           # Coverage is deterministic, so any real drop beyond rounding matters.
           alert-threshold: '101%'
