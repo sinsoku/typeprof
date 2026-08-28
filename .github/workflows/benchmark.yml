@@ -2,7 +2,7 @@ name: Benchmark
 
 on:
   push:
-    branches: [master, dev]
+    branches: ['**'] # every branch; the filter also keeps tag pushes out
   workflow_dispatch:
 
 # Only pushes from master append to the published history; every branch still
