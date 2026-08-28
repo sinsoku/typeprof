@@ -62,12 +62,25 @@ module TypeProf
 
       # Clone and run the project's own setup. Setup steps are expected to be
       # idempotent so that re-running prepare on an existing checkout is cheap.
+      #
+      # Setup subprocesses (bundler, rails, rbs) report progress on stdout, but
+      # in working-tree mode stdout carries only the result JSON, so their fd 1
+      # is pointed at stderr for the duration.
       def prepare!
         clone!
         return unless setup
 
         Dir.chdir(dir) do
-          Bundler.with_unbundled_env { setup.call }
+          Bundler.with_unbundled_env do
+            stdout = STDOUT.dup
+            STDOUT.reopen(STDERR)
+            begin
+              setup.call
+            ensure
+              STDOUT.reopen(stdout)
+              stdout.close
+            end
+          end
         end
       end
 
