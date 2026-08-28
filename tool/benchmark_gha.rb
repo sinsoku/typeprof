@@ -7,8 +7,8 @@
 #   tmp/benchmark/speed.json     (customSmallerIsBetter, seconds)
 #   tmp/benchmark/coverage.json  (customBiggerIsBetter, typed slots %)
 #
-#   ruby tool/benchmark.rb > benchmark-result.json
-#   ruby tool/benchmark_gha.rb benchmark-result.json
+#   ruby tool/benchmark.rb > tmp/benchmark/result.json
+#   ruby tool/benchmark_gha.rb tmp/benchmark/result.json
 
 require "fileutils"
 require "json"

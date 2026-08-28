@@ -37,10 +37,12 @@ jobs:
 
       # Fails the job when any project does not analyse cleanly.
       - name: Measure
-        run: ruby tool/benchmark.rb > benchmark-result.json
+        run: |
+          mkdir -p tmp/benchmark
+          ruby tool/benchmark.rb > tmp/benchmark/result.json
 
       - name: Convert to github-action-benchmark format
-        run: ruby tool/benchmark_gha.rb benchmark-result.json
+        run: ruby tool/benchmark_gha.rb tmp/benchmark/result.json
 
       - name: Publish speed
         uses: benchmark-action/github-action-benchmark@v1
