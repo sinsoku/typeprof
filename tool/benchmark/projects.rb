@@ -152,6 +152,9 @@ module TypeProf
     module Projects
       module_function
 
+      # The setup helpers below run with the project directory as cwd:
+      # Project#prepare! chdirs there before calling `setup`.
+
       def add_gem(name, *args)
         return if File.read("Gemfile").match?(/^\s*gem ["']#{Regexp.escape(name)}["']/)
 
@@ -171,8 +174,15 @@ module TypeProf
         system("bundle", "add", "rbs", "--github", "ruby/rbs", "--ref", want, exception: true)
       end
 
-      # Generates RBS for a Rails app.
       def setup_rails_rbs
+        unless File.exist?("config/database.yml")
+          File.write("config/database.yml", <<~YAML)
+            development:
+              adapter: sqlite3
+              database: db/development.sqlite3
+          YAML
+        end
+
         # Gems go into vendor/bundle so the project directory is self-contained
         # and CI can cache it as one unit. `bundle check` keeps re-runs fast.
         unless File.exist?(".bundle/config")
@@ -185,16 +195,6 @@ module TypeProf
         system("bundle exec rbs collection init", exception: true) unless File.exist?("rbs_collection.yaml")
         system("bundle exec rbs collection install", exception: true) unless File.exist?("rbs_collection.lock.yaml")
         system("bundle exec rbs_rails all", exception: true) unless Dir.exist?("sig/rbs_rails")
-      end
-
-      def write_sqlite_config
-        return if File.exist?("config/database.yml")
-
-        File.write("config/database.yml", <<~YAML)
-          development:
-            adapter: sqlite3
-            database: db/development.sqlite3
-        YAML
       end
 
       ALL = [
@@ -214,7 +214,7 @@ module TypeProf
           repo: "https://github.com/redmine/redmine.git",
           ref: "6.1.1",
           targets: ["app", "sig"],
-          setup: -> { write_sqlite_config; setup_rails_rbs },
+          setup: -> { setup_rails_rbs },
         ),
         # No setup: rubygems.org's Gemfile takes its Ruby requirement from
         # `.ruby-version` (4.0.6), which this repository does not run on, so

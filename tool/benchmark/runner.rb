@@ -95,7 +95,6 @@ module TypeProf
         { sha: sha, commit_timestamp: timestamp, commit_date: date }.merge(provenance(worktree))
       end
 
-      # The conditions the measurement ran under, recorded with every result.
       def provenance(worktree)
         {
           typeprof_version: typeprof_version(worktree),

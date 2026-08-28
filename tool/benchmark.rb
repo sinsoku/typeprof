@@ -55,7 +55,8 @@ unless options[:rev]
   prepare_projects
   data = runner.run_working_tree
   puts JSON.pretty_generate(data)
-  exit data[:projects].all? { _1[:status] == :ok }
+  exit 1 unless data[:projects].all? { _1[:status] == :ok }
+  exit
 end
 
 Commit = Data.define(:sha, :timestamp, :date)
@@ -63,7 +64,10 @@ Commit = Data.define(:sha, :timestamp, :date)
 def select_commits(options)
   out = Bench.git("rev-list", "--first-parent", "--format=%H %ct %cs", "--no-commit-header",
                   "#{STATS_SINCE}..#{options[:rev]}")
-  list = out.lines.map { Commit.new(*_1.split(" ").then { |s, t, d| [s, t.to_i, d] }) }
+  list = out.lines.map do |line|
+    sha, timestamp, date = line.split
+    Commit.new(sha:, timestamp: timestamp.to_i, date:)
+  end
   list = list.first(options[:limit]) if options[:limit]
   list.reverse # oldest first, so a partial run still builds history forward
 end
@@ -79,14 +83,14 @@ end
 puts "Measuring #{targets.size} commit(s)"
 prepare_projects
 
-failures = targets.filter_map do |commit|
+failures = []
+targets.each do |commit|
   results = runner.run(commit.sha, timestamp: commit.timestamp, date: commit.date,
                        force: options[:force])
   summary = results.map { "#{_1[:name]}=#{_1[:status]}" }.join(" ")
   puts "#{commit.sha[0, 10]} #{commit.date}  #{summary}"
-  nil
 rescue => e
-  [commit.sha, "#{e.class}: #{e.message}"]
+  failures << [commit.sha, "#{e.class}: #{e.message}"]
 end
 
 puts
