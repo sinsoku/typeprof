@@ -18,12 +18,12 @@ module TypeProf
       DATA_DIR = File.join(ROOT, "benchmark_data")
 
       # A hang is one of the failures worth recording, so the ceiling is only
-      # there to stop one; the slowest project today takes 13 seconds.
+      # there to stop one; the slowest project today takes a few seconds.
       TIMEOUT = 600
 
       def data_path(sha, name) = File.join(DATA_DIR, sha, "#{name}.json")
 
-      def measured?(sha) = Projects::ALL.all? { File.exist?(data_path(sha, _1.name)) }
+      def measured?(sha) = PROJECTS.all? { File.exist?(data_path(sha, _1.name)) }
 
       # Measures the projects that have no file yet and returns their results,
       # so adding a project later fills only the gap. Each file is
@@ -38,7 +38,7 @@ module TypeProf
           install_gems!(File.join(worktree, "Gemfile"))
           meta = metadata(sha, worktree, timestamp, date)
 
-          Projects::ALL.filter_map do |project|
+          PROJECTS.filter_map do |project|
             path = data_path(sha, project.name)
             next if !force && File.exist?(path)
 
@@ -57,7 +57,7 @@ module TypeProf
       # correspond to no commit.
       def run_working_tree
         install_gems!(File.join(ROOT, "Gemfile"))
-        results = Projects::ALL.map { measure(_1, "working-tree", ROOT) }
+        results = PROJECTS.map { measure(_1, "working-tree", ROOT) }
         sha = Bench.git("rev-parse", "HEAD").strip
         dirty = !Bench.git("status", "--porcelain").empty?
         { sha: sha, dirty: dirty }.merge(provenance(ROOT), projects: results)

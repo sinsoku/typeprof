@@ -17,7 +17,7 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       # Working-tree mode measures the checked-out commit as-is, so a shallow
       # clone is enough.
@@ -26,14 +26,6 @@ jobs:
         with:
           ruby-version: '3.4'
           bundler-cache: true
-
-      # The benchmark projects are self-contained under this path, including
-      # redmine's vendored gems and rbs collection. A miss re-clones and
-      # regenerates everything, which takes ~15 minutes.
-      - uses: actions/cache@v6
-        with:
-          path: tmp/benchmark/projects
-          key: benchmark-projects-${{ hashFiles('tool/benchmark/projects.rb', 'Gemfile.lock') }}
 
       # Fails the job when any project does not analyse cleanly.
       - name: Measure

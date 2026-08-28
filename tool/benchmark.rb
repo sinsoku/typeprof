@@ -37,11 +37,10 @@ OptionParser.new do |opt|
   opt.on("--force", "Re-measure commits that already have data") { options[:force] = true }
 end.parse!
 
-# Preparing is idempotent and costs a handful of file checks once the projects
-# are in place. The first run clones them and generates RBS for redmine, which
-# takes several minutes.
+# The first run clones the projects, which takes a minute or so; after that
+# preparing is one directory check per project.
 def prepare_projects
-  Bench::Projects::ALL.each do |project|
+  Bench::PROJECTS.each do |project|
     warn "Preparing #{project.name}" unless Dir.exist?(project.dir)
     project.prepare!
   end
