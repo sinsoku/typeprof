@@ -160,6 +160,12 @@ module TypeProf
 
       # Generates RBS for a Rails app.
       def setup_rails_rbs
+        # Gems go into vendor/bundle so the project directory is self-contained
+        # and CI can cache it as one unit. `bundle check` keeps re-runs fast.
+        unless File.exist?(".bundle/config")
+          system("bundle", "config", "set", "--local", "path", "vendor/bundle", exception: true)
+        end
+        system("bundle check >/dev/null || bundle install --quiet", exception: true)
         pin_rbs
         add_gem("rbs_rails", "-v", "0.13.1")
         system("bin/rails", "db:migrate", exception: true) unless File.exist?("db/schema.rb")
