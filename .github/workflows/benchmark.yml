@@ -1,0 +1,71 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [master, dev]
+  workflow_dispatch:
+
+# The gh-pages history is append-only per run; concurrent runs would race the
+# auto-push.
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # auto-push to the gh-pages branch
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # Working-tree mode measures the checked-out commit as-is, so a shallow
+      # clone is enough.
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: true
+
+      # The benchmark projects are self-contained under this path, including
+      # redmine's vendored gems and rbs collection. A miss re-clones and
+      # regenerates everything, which takes ~15 minutes.
+      - uses: actions/cache@v4
+        with:
+          path: tmp/benchmark/projects
+          key: benchmark-projects-${{ hashFiles('tool/benchmark/projects.rb', 'Gemfile.lock') }}
+
+      # Fails the job when any project does not analyse cleanly.
+      - name: Measure
+        run: ruby tool/benchmark.rb > benchmark-result.json
+
+      - name: Convert to github-action-benchmark format
+        run: ruby tool/benchmark_gha.rb benchmark-result.json
+
+      - name: Publish speed
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: 'TypeProf Speed'
+          tool: 'customSmallerIsBetter'
+          output-file-path: tmp/benchmark/speed.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          summary-always: true
+          # Shared runners vary by 10-20%; only flag clear regressions.
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false
+
+      - name: Publish coverage
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: 'TypeProf Coverage'
+          tool: 'customBiggerIsBetter'
+          output-file-path: tmp/benchmark/coverage.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          summary-always: true
+          # Coverage is deterministic, so any real drop beyond rounding matters.
+          alert-threshold: '101%'
+          comment-on-alert: true
+          fail-on-alert: false
