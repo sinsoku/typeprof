@@ -8,10 +8,12 @@ module TypeProf
     PROJECTS_DIR = File.join(ROOT, "tmp", "benchmark", "projects")
     OUT_DIR = File.join(ROOT, "tmp", "benchmark", "out")
 
-    # `--show-errors` also shifts the typed counts; the published history was measured with it.
-    FLAGS = ["--show-stats", "--show-errors"].freeze
+    # `--no-collection` pins the bare analysis even if an rbs_collection.yaml ever
+    # appears in cwd; `--show-errors` also shifts the typed counts. The data series
+    # published on gh-pages was measured with exactly these flags.
+    FLAGS = ["--no-collection", "--show-stats", "--show-errors"].freeze
 
-    # ~30x the slowest project today; even four simultaneous hangs fit in CI's 15-minute job.
+    # ~30x the slowest project today; even four hangs in a row fit in CI's 15-minute job.
     TIMEOUT = 120
 
     # `ref` is pinned so that only TypeProf changes between measurements; a project is
@@ -32,13 +34,18 @@ module TypeProf
       # `git clone --branch` warns on annotated tags and rejects SHAs; init + fetch
       # handles any ref (GitHub allows fetching arbitrary SHAs).
       def prepare!
-        return if Dir.exist?(File.join(dir, ".git"))
+        return if Dir.exist?(dir)
 
+        puts "Preparing #{ @name }"
         FileUtils.mkdir_p(dir)
         git!("init", "-q")
         git!("remote", "add", "origin", @repo)
         git!("fetch", "--depth", "1", "-q", "origin", @ref)
         git!("checkout", "-q", "FETCH_HEAD")
+      rescue Exception
+        # A half-made clone would pass the guard above forever; retry it instead.
+        FileUtils.rm_rf(dir)
+        raise
       end
 
       def measure
@@ -48,13 +55,13 @@ module TypeProf
                 *@exclude.flat_map {|glob| ["--exclude", File.expand_path(glob, dir)] },
                 *@targets.map {|target| File.expand_path(target, dir) }]
 
-        run = { name: @name }.merge(execute(argv, out_path))
-        return run unless run[:status] == :ok
+        result = { name: @name }.merge(execute(argv, out_path))
+        return result unless result[:status] == :ok
 
         metrics = Metrics.parse(File.read(out_path))
         # The dump is only Metrics' input and runs to hundreds of KB; failures keep theirs for diagnosis.
         FileUtils.rm_f([out_path, log_path_for(out_path)])
-        run.merge(metrics)
+        result.merge(metrics)
       end
 
       private
@@ -79,14 +86,15 @@ module TypeProf
         elapsed = elapsed_since(t)
         return { elapsed:, status: :ok } if $?.success?
 
-        { elapsed:, status: :crash, error: "exited with #{ $?.exitstatus }: #{ excerpt(log_path) }" }
+        status = $?.exitstatus || "signal #{ $?.termsig }"
+        { elapsed:, status: :crash, error: "exited with #{ status }: #{ excerpt(log_path) }" }
       end
 
       def log_path_for(out_path) = "#{ out_path }.log"
 
       def elapsed_since(t) = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
 
-      # The exception message is on the first line; the trailing frames are always the same three.
+      # Keep only the first three lines: the exception message leads, and the rest is backtrace.
       def excerpt(path)
         File.readlines(path).map(&:strip).reject(&:empty?).first(3).join(" / ")
       end

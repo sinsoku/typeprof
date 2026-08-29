@@ -7,11 +7,12 @@
 # and fails if any project does not analyse cleanly.
 #
 #   $ ruby tool/benchmark.rb
-#   typeprof         ok    1.79s   78.37%   475 diagnostics
+#   typeprof         ok          1.96s    79.04%  1002 diagnostics
 #   ...
 #   => tmp/benchmark/analysis_time.json  (customSmallerIsBetter, seconds)
 #   => tmp/benchmark/type_coverage.json  (customBiggerIsBetter, typed slots %)
 
+require "fileutils"
 require "json"
 require_relative "benchmark/projects"
 
@@ -22,15 +23,11 @@ module TypeProf
       Dir.chdir(ROOT)
 
       # The first run clones the projects, which takes a minute or so.
-      PROJECTS.each do |project|
-        puts "Preparing #{ project.name }" unless Dir.exist?(project.dir)
-        project.prepare!
-      end
+      PROJECTS.each(&:prepare!)
 
       # Almost always a no-op, but a stale lockfile (e.g. after switching
       # branches) would surface as a confusing per-project crash.
-      system("bundle", "install", "--quiet", out: File::NULL, err: File::NULL) or
-        raise "bundle install failed"
+      system("bundle", "install", "--quiet") or raise "bundle install failed"
 
       analysis_time = []
       type_coverage = []
@@ -40,14 +37,14 @@ module TypeProf
         result = project.measure
         if result[:status] == :ok
           typed, total = result[:overall].values_at(:typed, :total)
-          pct = (typed * 100.0 / total).round(2)
-          puts format("%-16s ok %8.2fs %8.2f%% %5d diagnostics",
-                      result[:name], result[:elapsed], pct, result[:diagnostics])
+          pct = total.zero? ? 0.0 : (typed * 100.0 / total).round(2)
+          puts format("%-16s %-7s %8.2fs %8.2f%% %5d diagnostics",
+                      result[:name], result[:status], result[:elapsed], pct, result[:diagnostics])
           analysis_time << { name: result[:name], unit: "s", value: result[:elapsed] }
           type_coverage << { name: result[:name], unit: "%", value: pct }
         else
           failed = true
-          puts format("%-16s %s: %s", result[:name], result[:status], result[:error])
+          puts format("%-16s %-7s %s", result[:name], result[:status], result[:error])
         end
       end
 
