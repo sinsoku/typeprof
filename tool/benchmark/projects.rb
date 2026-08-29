@@ -56,11 +56,8 @@ module TypeProf
                 *@targets.map {|target| File.expand_path(target, dir) }]
 
         result = { name: @name }.merge(execute(argv))
-        if result[:status] == :ok
-          result.merge(Metrics.parse(File.read(out_path)))
-        else
-          result
-        end
+        result.merge!(Metrics.parse(File.read(out_path))) if result[:status] == :ok
+        result
       end
 
       private
