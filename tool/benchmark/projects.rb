@@ -60,7 +60,7 @@ module TypeProf
 
         metrics = Metrics.parse(File.read(out_path))
         # The dump is only Metrics' input and runs to hundreds of KB; failures keep theirs for diagnosis.
-        FileUtils.rm_f([out_path, log_path_for(out_path)])
+        FileUtils.rm_f(out_path)
         result.merge(metrics)
       end
 
@@ -70,11 +70,9 @@ module TypeProf
 
       def execute(argv, out_path)
         cmd = ["bundle", "exec", "ruby", File.join(ROOT, "bin/typeprof"), *argv]
-        # The dump goes to `-o`, so both streams carry only progress and errors; keep them in one log.
-        log_path = log_path_for(out_path)
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-        pid = Process.spawn(*cmd, [:out, :err] => log_path)
+        pid = Process.spawn(*cmd)
         begin
           Timeout.timeout(TIMEOUT) { Process.waitpid(pid) }
         rescue Timeout::Error
@@ -86,18 +84,10 @@ module TypeProf
         elapsed = elapsed_since(t)
         return { elapsed:, status: :ok } if $?.success?
 
-        status = $?.exitstatus || "signal #{ $?.termsig }"
-        { elapsed:, status: :crash, error: "exited with #{ status }: #{ excerpt(log_path) }" }
+        { elapsed:, status: :crash, error: "exited with #{ $?.exitstatus || "signal #{ $?.termsig }" }" }
       end
-
-      def log_path_for(out_path) = "#{ out_path }.log"
 
       def elapsed_since(t) = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
-
-      # Keep only the first three lines: the exception message leads, and the rest is backtrace.
-      def excerpt(path)
-        File.readlines(path).map(&:strip).reject(&:empty?).first(3).join(" / ")
-      end
     end
 
     PROJECTS = [
