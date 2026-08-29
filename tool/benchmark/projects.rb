@@ -12,9 +12,15 @@ module TypeProf
     PROJECTS_DIR = File.join(ROOT, "tmp", "benchmark", "projects")
     OUT_DIR = File.join(ROOT, "tmp", "benchmark", "out")
 
-    # Recorded alongside the numbers because the flags affect them: enabling
-    # `--show-errors` shifts the typed slot counts slightly.
+    # `--show-errors` feeds the diagnostics tally, and also shifts the typed
+    # counts slightly — the published history was measured with it, so it
+    # stays for comparability.
     FLAGS = ["--show-stats", "--show-errors"].freeze
+
+    # A hang is one of the failures worth catching; 120s is ~30x the slowest
+    # project today and keeps even four simultaneous hangs inside CI's
+    # 15-minute job timeout.
+    TIMEOUT = 120
 
     # Built once and handed to each child, rather than wrapping every spawn in
     # `Bundler.with_unbundled_env`, which swaps ENV in place around a block.
@@ -48,48 +54,47 @@ module TypeProf
         Benchmark.git!("checkout", "-q", "FETCH_HEAD", dir: dir)
       end
 
-      def measure(worktree:, out_path:, timeout:)
-        FileUtils.mkdir_p(File.dirname(out_path))
+      def measure
+        FileUtils.mkdir_p(OUT_DIR)
+        out_path = File.join(OUT_DIR, "#{name}.out")
         argv = ["-o", out_path, *FLAGS, *exclude.flat_map { ["--exclude", _1] }, *targets]
 
-        gemfile = File.join(worktree, "Gemfile")
-        run = execute(File.join(worktree, "bin/typeprof"), gemfile, argv, out_path, timeout)
-        base = { name: name, ref: ref }
-        return base.merge(run) unless run[:status] == :ok
+        run = { name: name }.merge(execute(argv, out_path))
+        return run unless run[:status] == :ok
 
         begin
           metrics = Metrics.parse(File.read(out_path))
         rescue Metrics::ParseError => e
-          return base.merge(run, status: :crash, error: "#{e.class}: #{e.message}")
+          return run.merge(status: :crash, error: "#{e.class}: #{e.message}")
         end
 
         # The dump is only an input to Metrics and runs to hundreds of KB per
         # project; a failed run keeps its own for diagnosis.
         FileUtils.rm_f([out_path, log_path_for(out_path)])
-        base.merge(run, **metrics)
+        run.merge(metrics)
       end
 
       private
 
-      def execute(bin, gemfile, argv, out_path, timeout)
-        cmd = ["bundle", "exec", "ruby", bin, *argv]
+      def execute(argv, out_path)
+        cmd = ["bundle", "exec", "ruby", File.join(ROOT, "bin/typeprof"), *argv]
         # The RBS dump goes to `-o out_path`, so both streams only carry
         # progress and error messages. Keep them together for diagnosis.
         log_path = log_path_for(out_path)
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-        pid = Process.spawn(Benchmark.bundle_env(gemfile), *cmd, unsetenv_others: true,
-                            chdir: dir, [:out, :err] => log_path)
+        pid = Process.spawn(Benchmark.bundle_env(File.join(ROOT, "Gemfile")), *cmd,
+                            unsetenv_others: true, chdir: dir, [:out, :err] => log_path)
         begin
-          Timeout.timeout(timeout) { Process.waitpid(pid) }
+          Timeout.timeout(TIMEOUT) { Process.waitpid(pid) }
         rescue Timeout::Error
           Process.kill("KILL", pid)
           Process.waitpid(pid)
-          return { elapsed: elapsed_since(t), status: :timeout, error: "exceeded #{timeout}s" }
+          return { elapsed: elapsed_since(t), status: :timeout, error: "exceeded #{TIMEOUT}s" }
         end
 
         elapsed = elapsed_since(t)
-        return { elapsed:, status: :ok, error: nil } if $?.success?
+        return { elapsed:, status: :ok } if $?.success?
 
         { elapsed:, status: :crash, error: "exited with #{$?.exitstatus}: #{excerpt(log_path)}" }
       end
@@ -102,8 +107,6 @@ module TypeProf
       # end are always the same three and say nothing.
       def excerpt(path)
         File.readlines(path).map(&:strip).reject(&:empty?).first(3).join(" / ")
-      rescue SystemCallError
-        ""
       end
     end
 

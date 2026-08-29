@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # Working-tree mode measures the checked-out commit as-is, so a shallow
+      # The benchmark measures the checked-out tree as-is, so a shallow
       # clone is enough.
       - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1

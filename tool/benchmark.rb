@@ -19,10 +19,6 @@ require_relative "benchmark/projects"
 
 module TypeProf
   module Benchmark
-    # A hang is one of the failures worth catching, so the ceiling is only
-    # there to stop one; the slowest project today takes a few seconds.
-    TIMEOUT = 600
-
     # The first run clones the projects, which takes a minute or so; after
     # that this is one directory check per project.
     PROJECTS.each do |project|
@@ -36,25 +32,23 @@ module TypeProf
            unsetenv_others: true, out: File::NULL, err: File::NULL) or
       raise "bundle install failed"
 
-    results = PROJECTS.map do |project|
-      result = project.measure(worktree: ROOT,
-                               out_path: File.join(OUT_DIR, "#{project.name}.out"),
-                               timeout: TIMEOUT)
+    speed = []
+    coverage = []
+    failed = false
+
+    PROJECTS.each do |project|
+      result = project.measure
       if result[:status] == :ok
         typed, total = result[:overall].values_at(:typed, :total)
+        pct = (typed * 100.0 / total).round(2)
         puts format("%-16s ok %8.2fs %8.2f%% %5d diagnostics",
-                    result[:name], result[:elapsed], typed * 100.0 / total, result[:diagnostics])
+                    result[:name], result[:elapsed], pct, result[:diagnostics])
+        speed << { name: result[:name], unit: "s", value: result[:elapsed] }
+        coverage << { name: result[:name], unit: "%", value: pct }
       else
+        failed = true
         puts format("%-16s %s: %s", result[:name], result[:status], result[:error])
       end
-      result
-    end
-
-    ok = results.select { _1[:status] == :ok }
-    speed = ok.map { { name: _1[:name], unit: "s", value: _1[:elapsed] } }
-    coverage = ok.map do |r|
-      typed, total = r[:overall].values_at(:typed, :total)
-      { name: r[:name], unit: "%", value: (typed * 100.0 / total).round(2) }
     end
 
     gha_dir = File.join(ROOT, "tmp", "benchmark")
@@ -62,6 +56,6 @@ module TypeProf
     File.write(File.join(gha_dir, "speed.json"), JSON.pretty_generate(speed))
     File.write(File.join(gha_dir, "coverage.json"), JSON.pretty_generate(coverage))
 
-    exit 1 unless ok.size == results.size
+    exit 1 if failed
   end
 end
