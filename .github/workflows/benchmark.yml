@@ -27,14 +27,10 @@ jobs:
           ruby-version: '3.4'
           bundler-cache: true
 
-      # Fails the job when any project does not analyse cleanly.
+      # Writes tmp/benchmark/{speed,coverage}.json and fails the job when any
+      # project does not analyse cleanly.
       - name: Measure
-        run: |
-          mkdir -p tmp/benchmark
-          ruby tool/benchmark.rb > tmp/benchmark/result.json
-
-      - name: Convert to github-action-benchmark format
-        run: ruby tool/benchmark_gha.rb tmp/benchmark/result.json
+        run: ruby tool/benchmark.rb
 
       - name: Publish speed
         uses: benchmark-action/github-action-benchmark@v1
