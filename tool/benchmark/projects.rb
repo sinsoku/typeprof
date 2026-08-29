@@ -114,24 +114,24 @@ module TypeProf
       Project.new(
         name: "typeprof",
         repo: "https://github.com/ruby/typeprof.git",
-        ref: "v0.31.1",
+        ref: "v0.32.0",
         exclude: ["scenario/**/*"],
       ),
       Project.new(
         name: "optcarrot",
         repo: "https://github.com/mame/optcarrot.git",
-        ref: "9c88f5f752341087270b0e86e741d73f19e52369", # 2026-04-29 HEAD
+        ref: "c215378a27b2dce8d8e5d98a3ed75e0354c5a840", # 2026-05-10 master
       ),
       Project.new(
         name: "redmine",
         repo: "https://github.com/redmine/redmine.git",
-        ref: "6.1.1",
+        ref: "7.0.1",
         targets: ["app"],
       ),
       Project.new(
         name: "rubygems.org",
         repo: "https://github.com/rubygems/rubygems.org.git",
-        ref: "4e36c18deef651564e7029ad8c00594f7e207d1b", # 2026-07-30 master
+        ref: "2abc82667d02ef7ae3a1433d621c1f7463985c6d", # 2026-08-28 master
         targets: ["app", "lib"],
       ),
     ].freeze
