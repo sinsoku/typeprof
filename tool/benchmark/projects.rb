@@ -48,11 +48,12 @@ module TypeProf
       def measure
         FileUtils.mkdir_p(OUT_DIR)
         out_path = File.join(OUT_DIR, "#{ @name }.out")
-        argv = ["-o", out_path, *FLAGS,
-                *@exclude.flat_map {|glob| ["--exclude", File.expand_path(glob, dir)] },
-                dir]
+        cmd = ["bundle", "exec", "ruby", File.join(ROOT, "bin/typeprof"),
+               "-o", out_path, *FLAGS,
+               *@exclude.flat_map {|glob| ["--exclude", File.expand_path(glob, dir)] },
+               dir]
 
-        result = { name: @name }.merge(execute(argv))
+        result = { name: @name }.merge(execute(cmd))
         result.merge!(Metrics.parse(File.read(out_path))) if result[:status] == :ok
         result
       end
@@ -61,8 +62,7 @@ module TypeProf
 
       def git!(*args) = system("git", "-C", dir, *args, exception: true)
 
-      def execute(argv)
-        cmd = ["bundle", "exec", "ruby", File.join(ROOT, "bin/typeprof"), *argv]
+      def execute(cmd)
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         pid = Process.spawn(*cmd)
