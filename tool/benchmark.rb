@@ -4,7 +4,7 @@
 #
 # Analyses the working tree as it is — uncommitted changes included — writes
 # the two files github-action-benchmark reads, prints a per-project summary,
-# and fails if any project does not analyse cleanly.
+# and fails if any project crashes or hangs.
 #
 #   $ ruby tool/benchmark.rb
 #   typeprof         ok          1.96s    79.04%  1002 diagnostics
@@ -48,10 +48,9 @@ module TypeProf
         end
       end
 
-      output_dir = File.join(ROOT, "tmp", "benchmark")
-      FileUtils.mkdir_p(output_dir)
-      File.write(File.join(output_dir, "analysis_time.json"), JSON.pretty_generate(analysis_time))
-      File.write(File.join(output_dir, "type_coverage.json"), JSON.pretty_generate(type_coverage))
+      FileUtils.mkdir_p(TMP_DIR)
+      File.write(File.join(TMP_DIR, "analysis_time.json"), JSON.pretty_generate(analysis_time))
+      File.write(File.join(TMP_DIR, "type_coverage.json"), JSON.pretty_generate(type_coverage))
 
       !failed
     end

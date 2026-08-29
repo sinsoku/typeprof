@@ -5,12 +5,12 @@ require_relative "metrics"
 module TypeProf
   module Benchmark
     ROOT = File.expand_path("../..", __dir__)
-    PROJECTS_DIR = File.join(ROOT, "tmp", "benchmark", "projects")
-    OUT_DIR = File.join(ROOT, "tmp", "benchmark", "out")
+    TMP_DIR = File.join(ROOT, "tmp", "benchmark")
+    PROJECTS_DIR = File.join(TMP_DIR, "projects")
+    OUT_DIR = File.join(TMP_DIR, "out")
 
     # `--no-collection` pins the bare analysis even if an rbs_collection.yaml ever
-    # appears in cwd; `--show-errors` also shifts the typed counts. The data series
-    # published on gh-pages was measured with exactly these flags.
+    # appears in cwd; `--show-errors` feeds the diagnostics metric.
     FLAGS = ["--no-collection", "--show-stats", "--show-errors"].freeze
 
     # ~30x the slowest project today; even four hangs in a row fit in CI's 15-minute job.
@@ -43,7 +43,7 @@ module TypeProf
         git!("fetch", "--depth", "1", "-q", "origin", @ref)
         git!("checkout", "-q", "FETCH_HEAD")
       rescue Exception
-        # A half-made clone would pass the guard above forever; retry it instead.
+        # A half-made clone would pass the guard above forever; let the next run retry.
         FileUtils.rm_rf(dir)
         raise
       end
