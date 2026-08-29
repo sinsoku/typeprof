@@ -58,10 +58,7 @@ module TypeProf
         result = { name: @name }.merge(execute(argv))
         return result unless result[:status] == :ok
 
-        metrics = Metrics.parse(File.read(out_path))
-        # The dump (hundreds of KB) only feeds Metrics: delete it on success, keep it when the run failed.
-        FileUtils.rm_f(out_path)
-        result.merge(metrics)
+        result.merge(Metrics.parse(File.read(out_path)))
       end
 
       private
