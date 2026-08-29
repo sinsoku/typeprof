@@ -50,6 +50,8 @@ jobs:
           tool: 'customBiggerIsBetter'
           output-file-path: tmp/benchmark/type_coverage.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # The step above commits to the local gh-pages; fetching again would be non-fast-forward.
+          skip-fetch-gh-pages: true
           auto-push: ${{ github.ref == 'refs/heads/master' }}
           summary-always: true
           alert-threshold: '100%'
