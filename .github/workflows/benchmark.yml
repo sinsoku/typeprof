@@ -30,7 +30,6 @@ jobs:
       - name: Measure
         run: ruby tool/benchmark.rb
 
-      # The publish steps can only append to an existing branch.
       - name: Create gh-pages on the first run
         run: |
           if ! git ls-remote --exit-code origin gh-pages > /dev/null; then
