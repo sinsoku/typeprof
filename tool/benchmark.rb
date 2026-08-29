@@ -39,7 +39,7 @@ module TypeProf
         repo: "https://github.com/redmine/redmine.git",
         ref: "7.0.1",
       ),
-    ].freeze
+    ]
 
     def self.run
       # `bundle exec` for the children resolves the Gemfile from here.

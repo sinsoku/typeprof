@@ -22,8 +22,7 @@ module TypeProf
 
       def dir = File.join(PROJECTS_DIR, @name)
 
-      # `git clone --branch` warns on annotated tags and rejects SHAs; init + fetch
-      # handles any ref (GitHub allows fetching arbitrary SHAs).
+      # `git clone --branch` rejects SHAs; init + fetch handles any ref (GitHub allows SHA fetches).
       def prepare!
         return if Dir.exist?(dir)
 
