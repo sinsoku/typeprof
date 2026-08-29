@@ -14,10 +14,33 @@
 
 require "fileutils"
 require "json"
-require_relative "benchmark/projects"
+require_relative "benchmark/project"
 
 module TypeProf
   module Benchmark
+    PROJECTS = [
+      Project.new(
+        name: "typeprof",
+        repo: "https://github.com/ruby/typeprof.git",
+        ref: "v0.32.0",
+      ),
+      Project.new(
+        name: "optcarrot",
+        repo: "https://github.com/mame/optcarrot.git",
+        ref: "c215378a27b2dce8d8e5d98a3ed75e0354c5a840", # 2026-05-10 master
+      ),
+      Project.new(
+        name: "redmine",
+        repo: "https://github.com/redmine/redmine.git",
+        ref: "7.0.1",
+      ),
+      Project.new(
+        name: "rubygems.org",
+        repo: "https://github.com/rubygems/rubygems.org.git",
+        ref: "2abc82667d02ef7ae3a1433d621c1f7463985c6d", # 2026-08-28 master
+      ),
+    ].freeze
+
     def self.run
       # `bundle exec` for the children resolves the Gemfile from here.
       Dir.chdir(ROOT)

@@ -1,6 +1,5 @@
 require "fileutils"
 require "timeout"
-require_relative "metrics"
 
 module TypeProf
   module Benchmark
@@ -48,7 +47,7 @@ module TypeProf
                "-o", out_path, "--no-collection", "--show-stats", "--show-errors", dir]
 
         result = { name: @name }.merge(execute(cmd))
-        result.merge!(Metrics.parse(File.read(out_path))) if result[:status] == :ok
+        result.merge!(parse_stats(File.read(out_path))) if result[:status] == :ok
         result
       end
 
@@ -75,29 +74,19 @@ module TypeProf
           { status: :crash, error: "exited with #{ $?.exitstatus || "signal #{ $?.termsig }" }" }
         end
       end
+
+      # Parses the output of `typeprof --show-stats --show-errors`.
+      def parse_stats(text)
+        m = text.match(/^# Overall:\s*(\d+)\/(\d+)/) or raise "no statistics in the output"
+
+        {
+          overall: { typed: m[1].to_i, total: m[2].to_i },
+          # `--show-errors` emits one line per diagnostic, e.g.
+          #   # (239,27)-(239,30):undefined method: nil#[]
+          diagnostics: text.each_line.count {|line| line.match?(/^# \(\d+,\d+\)-\(\d+,\d+\):/) },
+        }
+      end
     end
 
-    PROJECTS = [
-      Project.new(
-        name: "typeprof",
-        repo: "https://github.com/ruby/typeprof.git",
-        ref: "v0.32.0",
-      ),
-      Project.new(
-        name: "optcarrot",
-        repo: "https://github.com/mame/optcarrot.git",
-        ref: "c215378a27b2dce8d8e5d98a3ed75e0354c5a840", # 2026-05-10 master
-      ),
-      Project.new(
-        name: "redmine",
-        repo: "https://github.com/redmine/redmine.git",
-        ref: "7.0.1",
-      ),
-      Project.new(
-        name: "rubygems.org",
-        repo: "https://github.com/rubygems/rubygems.org.git",
-        ref: "2abc82667d02ef7ae3a1433d621c1f7463985c6d", # 2026-08-28 master
-      ),
-    ].freeze
   end
 end
