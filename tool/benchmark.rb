@@ -19,8 +19,7 @@ require_relative "benchmark/projects"
 
 module TypeProf
   module Benchmark
-    # The first run clones the projects, which takes a minute or so; after
-    # that this is one directory check per project.
+    # The first run clones the projects, which takes a minute or so.
     PROJECTS.each do |project|
       puts "Preparing #{project.name}" unless Dir.exist?(project.dir)
       project.prepare!
