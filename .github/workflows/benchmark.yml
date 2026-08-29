@@ -30,6 +30,14 @@ jobs:
       - name: Measure
         run: ruby tool/benchmark.rb
 
+      # The publish steps can only append to an existing branch.
+      - name: Create gh-pages on the first run
+        run: |
+          if ! git ls-remote --exit-code origin gh-pages > /dev/null; then
+            commit=$(git commit-tree "$(git hash-object -t tree /dev/null)" -m "Initialize the benchmark history")
+            git push origin "${commit}:refs/heads/gh-pages"
+          fi
+
       - name: Publish analysis time
         uses: benchmark-action/github-action-benchmark@v1
         with:
