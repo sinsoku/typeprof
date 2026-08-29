@@ -33,6 +33,8 @@ jobs:
       - name: Create gh-pages on the first run
         run: |
           if ! git ls-remote --exit-code origin gh-pages > /dev/null; then
+            git config user.name github-actions
+            git config user.email github-actions@github.com
             commit=$(git commit-tree "$(git hash-object -t tree /dev/null)" -m "Initialize the benchmark history")
             git push origin "${commit}:refs/heads/gh-pages"
           fi
