@@ -1,8 +1,8 @@
 name: Benchmark
 
-# Measures the checked-out tree against the benchmark projects. Only pushes
-# from master append to the published gh-pages history; every branch still
-# gets the summary and alert comparison against the last published point.
+# Only pushes from master append to the published gh-pages history; every
+# branch still gets the summary and alert comparison against the last
+# published point.
 
 on:
   push:

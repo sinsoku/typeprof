@@ -74,7 +74,6 @@ module TypeProf
         end
       end
 
-      # Parses the output of `typeprof --show-stats --show-errors`.
       def parse_stats(text)
         m = text.match(/^# Overall:\s*(\d+)\/(\d+)/) or raise "no statistics in the output"
 
