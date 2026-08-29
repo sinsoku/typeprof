@@ -8,7 +8,7 @@ require "timeout"
 require_relative "metrics"
 
 module TypeProf
-  module Bench
+  module Benchmark
     ROOT = File.expand_path("../..", __dir__)
     PROJECTS_DIR = File.join(ROOT, "tmp", "benchmark", "projects")
     OUT_DIR = File.join(ROOT, "tmp", "benchmark", "out")
@@ -51,10 +51,10 @@ module TypeProf
         return if Dir.exist?(File.join(dir, ".git"))
 
         FileUtils.mkdir_p(dir)
-        Bench.git!("init", "-q", dir: dir)
-        Bench.git!("remote", "add", "origin", repo, dir: dir)
-        Bench.git!("fetch", "--depth", "1", "-q", "origin", ref, dir: dir)
-        Bench.git!("checkout", "-q", "FETCH_HEAD", dir: dir)
+        Benchmark.git!("init", "-q", dir: dir)
+        Benchmark.git!("remote", "add", "origin", repo, dir: dir)
+        Benchmark.git!("fetch", "--depth", "1", "-q", "origin", ref, dir: dir)
+        Benchmark.git!("checkout", "-q", "FETCH_HEAD", dir: dir)
       end
 
       def measure(worktree:, out_path:, timeout:)
@@ -87,7 +87,7 @@ module TypeProf
         log_path = log_path_for(out_path)
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-        pid = Process.spawn(Bench.bundle_env(gemfile), *cmd, unsetenv_others: true,
+        pid = Process.spawn(Benchmark.bundle_env(gemfile), *cmd, unsetenv_others: true,
                             chdir: dir, [:out, :err] => log_path)
         begin
           Timeout.timeout(timeout) { Process.waitpid(pid) }

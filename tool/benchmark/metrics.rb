@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module TypeProf
-  module Bench
+  module Benchmark
     # Parses the output of `typeprof --show-stats --show-errors`.
     #
     # Only raw counts are extracted. Derived values such as coverage ratios are

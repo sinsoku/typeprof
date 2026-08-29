@@ -6,7 +6,7 @@ require_relative "../../lib/typeprof/version"
 require_relative "projects"
 
 module TypeProf
-  module Bench
+  module Benchmark
     # Measures the working tree — uncommitted changes included — against the
     # benchmark projects.
     class Runner
@@ -17,8 +17,8 @@ module TypeProf
       def run_working_tree
         install_gems!(File.join(ROOT, "Gemfile"))
         results = PROJECTS.map { measure(_1) }
-        sha = Bench.git("rev-parse", "HEAD").strip
-        dirty = !Bench.git("status", "--porcelain").empty?
+        sha = Benchmark.git("rev-parse", "HEAD").strip
+        dirty = !Benchmark.git("status", "--porcelain").empty?
         { sha: sha, dirty: dirty }.merge(provenance, projects: results)
       end
 
@@ -37,7 +37,7 @@ module TypeProf
       # Almost always a no-op, but a lockfile change (e.g. after switching
       # branches) would otherwise surface as a confusing per-project crash.
       def install_gems!(gemfile)
-        system(Bench.bundle_env(gemfile), "bundle", "install", "--quiet",
+        system(Benchmark.bundle_env(gemfile), "bundle", "install", "--quiet",
                unsetenv_others: true, out: File::NULL, err: File::NULL) or
           raise "bundle install failed for #{gemfile}"
       end
@@ -45,7 +45,7 @@ module TypeProf
       def provenance
         {
           typeprof_version: TypeProf::VERSION,
-          rbs_revision: Bench.rbs_revision(File.join(ROOT, "Gemfile.lock")),
+          rbs_revision: Benchmark.rbs_revision(File.join(ROOT, "Gemfile.lock")),
           measured_at: Time.now.iso8601,
           flags: FLAGS,
           host: { ruby: RUBY_VERSION, arch: RUBY_PLATFORM },

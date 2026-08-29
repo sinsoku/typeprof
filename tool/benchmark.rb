@@ -12,15 +12,13 @@ require "json"
 
 require_relative "benchmark/runner"
 
-Bench = TypeProf::Bench
-
 # The first run clones the projects, which takes a minute or so; after that
 # this is one directory check per project.
-Bench::PROJECTS.each do |project|
+TypeProf::Benchmark::PROJECTS.each do |project|
   warn "Preparing #{project.name}" unless Dir.exist?(project.dir)
   project.prepare!
 end
 
-data = Bench::Runner.new.run_working_tree
+data = TypeProf::Benchmark::Runner.new.run_working_tree
 puts JSON.pretty_generate(data)
 exit 1 unless data[:projects].all? { _1[:status] == :ok }
