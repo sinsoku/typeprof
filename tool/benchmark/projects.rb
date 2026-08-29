@@ -56,9 +56,11 @@ module TypeProf
                 *@targets.map {|target| File.expand_path(target, dir) }]
 
         result = { name: @name }.merge(execute(argv))
-        return result unless result[:status] == :ok
-
-        result.merge(Metrics.parse(File.read(out_path)))
+        if result[:status] == :ok
+          result.merge(Metrics.parse(File.read(out_path)))
+        else
+          result
+        end
       end
 
       private
@@ -78,12 +80,12 @@ module TypeProf
           return { status: :timeout, error: "exceeded #{ TIMEOUT }s" }
         end
 
-        unless $?.success?
-          return { status: :crash, error: "exited with #{ $?.exitstatus || "signal #{ $?.termsig }" }" }
+        if $?.success?
+          elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
+          { status: :ok, elapsed: }
+        else
+          { status: :crash, error: "exited with #{ $?.exitstatus || "signal #{ $?.termsig }" }" }
         end
-
-        elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
-        { elapsed:, status: :ok }
       end
     end
 
