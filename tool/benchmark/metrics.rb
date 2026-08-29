@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module TypeProf
   module Benchmark
     # Parses the output of `typeprof --show-stats --show-errors`.
@@ -16,7 +14,7 @@ module TypeProf
 
         {
           overall: { typed: m[1].to_i, total: m[2].to_i },
-          diagnostics: text.each_line.count { |line| DIAGNOSTIC_RE.match?(line) },
+          diagnostics: text.each_line.count {|line| DIAGNOSTIC_RE.match?(line) },
         }
       end
     end

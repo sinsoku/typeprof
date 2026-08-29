@@ -1,5 +1,4 @@
 #!/usr/bin/env ruby
-# frozen_string_literal: true
 
 # Measures TypeProf against the benchmark projects.
 #
@@ -14,19 +13,18 @@
 #   => tmp/benchmark/coverage.json  (customBiggerIsBetter, typed slots %)
 
 require "json"
-
 require_relative "benchmark/projects"
 
 module TypeProf
   module Benchmark
     # The first run clones the projects, which takes a minute or so.
     PROJECTS.each do |project|
-      puts "Preparing #{project.name}" unless Dir.exist?(project.dir)
+      puts "Preparing #{ project.name }" unless Dir.exist?(project.dir)
       project.prepare!
     end
 
-    # Almost always a no-op, but a lockfile change (e.g. after switching
-    # branches) would otherwise surface as a confusing per-project crash.
+    # Almost always a no-op, but a stale lockfile (e.g. after switching
+    # branches) would surface as a confusing per-project crash.
     system(bundle_env(File.join(ROOT, "Gemfile")), "bundle", "install", "--quiet",
            unsetenv_others: true, out: File::NULL, err: File::NULL) or
       raise "bundle install failed"

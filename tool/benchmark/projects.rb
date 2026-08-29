@@ -1,9 +1,6 @@
-# frozen_string_literal: true
-
 require "bundler"
 require "fileutils"
 require "timeout"
-
 require_relative "metrics"
 
 module TypeProf
@@ -12,18 +9,13 @@ module TypeProf
     PROJECTS_DIR = File.join(ROOT, "tmp", "benchmark", "projects")
     OUT_DIR = File.join(ROOT, "tmp", "benchmark", "out")
 
-    # `--show-errors` feeds the diagnostics tally, and also shifts the typed
-    # counts slightly — the published history was measured with it, so it
-    # stays for comparability.
+    # `--show-errors` also shifts the typed counts; the published history was measured with it.
     FLAGS = ["--show-stats", "--show-errors"].freeze
 
-    # A hang is one of the failures worth catching; 120s is ~30x the slowest
-    # project today and keeps even four simultaneous hangs inside CI's
-    # 15-minute job timeout.
+    # ~30x the slowest project today; even four simultaneous hangs fit in CI's 15-minute job.
     TIMEOUT = 120
 
-    # Built once and handed to each child, rather than wrapping every spawn in
-    # `Bundler.with_unbundled_env`, which swaps ENV in place around a block.
+    # `Bundler.with_unbundled_env` swaps ENV in place, so build the environment once instead.
     UNBUNDLED_ENV = Bundler.unbundled_env.freeze
 
     module_function
@@ -32,18 +24,15 @@ module TypeProf
 
     def git!(*args, dir:) = system("git", "-C", dir, *args, exception: true)
 
-    # `ref` is pinned so that only TypeProf changes between measurements. A
-    # project is analysed exactly as cloned — no gem installation, no RBS
-    # generation — so the checkout is fully determined by its ref.
+    # `ref` is pinned so that only TypeProf changes between measurements; a project is
+    # analysed exactly as cloned, so its checkout is fully determined by the ref.
     Project = Data.define(:name, :repo, :ref, :targets, :exclude) do
       def initialize(targets: ["."], exclude: [], **) = super
 
       def dir = File.join(PROJECTS_DIR, name)
 
-      # Unified init + fetch + checkout for any ref (SHA / tag / branch).
-      # `git clone --branch` is noisier (annotated tags emit a "is not a commit"
-      # warning + detached HEAD advice) and doesn't accept SHAs. Fetching by SHA
-      # works thanks to GitHub's uploadpack.allowAnySHA1InWant.
+      # `git clone --branch` warns on annotated tags and rejects SHAs; init + fetch
+      # handles any ref (GitHub allows fetching arbitrary SHAs).
       def prepare!
         return if Dir.exist?(File.join(dir, ".git"))
 
@@ -56,8 +45,8 @@ module TypeProf
 
       def measure
         FileUtils.mkdir_p(OUT_DIR)
-        out_path = File.join(OUT_DIR, "#{name}.out")
-        argv = ["-o", out_path, *FLAGS, *exclude.flat_map { ["--exclude", _1] }, *targets]
+        out_path = File.join(OUT_DIR, "#{ name }.out")
+        argv = ["-o", out_path, *FLAGS, *exclude.flat_map {|pat| ["--exclude", pat] }, *targets]
 
         run = { name: name }.merge(execute(argv, out_path))
         return run unless run[:status] == :ok
@@ -65,11 +54,10 @@ module TypeProf
         begin
           metrics = Metrics.parse(File.read(out_path))
         rescue Metrics::ParseError => e
-          return run.merge(status: :crash, error: "#{e.class}: #{e.message}")
+          return run.merge(status: :crash, error: "#{ e.class }: #{ e.message }")
         end
 
-        # The dump is only an input to Metrics and runs to hundreds of KB per
-        # project; a failed run keeps its own for diagnosis.
+        # The dump is only Metrics' input and runs to hundreds of KB; failures keep theirs for diagnosis.
         FileUtils.rm_f([out_path, log_path_for(out_path)])
         run.merge(metrics)
       end
@@ -78,8 +66,7 @@ module TypeProf
 
       def execute(argv, out_path)
         cmd = ["bundle", "exec", "ruby", File.join(ROOT, "bin/typeprof"), *argv]
-        # The RBS dump goes to `-o out_path`, so both streams only carry
-        # progress and error messages. Keep them together for diagnosis.
+        # The dump goes to `-o`, so both streams carry only progress and errors; keep them in one log.
         log_path = log_path_for(out_path)
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -90,21 +77,20 @@ module TypeProf
         rescue Timeout::Error
           Process.kill("KILL", pid)
           Process.waitpid(pid)
-          return { elapsed: elapsed_since(t), status: :timeout, error: "exceeded #{TIMEOUT}s" }
+          return { elapsed: elapsed_since(t), status: :timeout, error: "exceeded #{ TIMEOUT }s" }
         end
 
         elapsed = elapsed_since(t)
         return { elapsed:, status: :ok } if $?.success?
 
-        { elapsed:, status: :crash, error: "exited with #{$?.exitstatus}: #{excerpt(log_path)}" }
+        { elapsed:, status: :crash, error: "exited with #{ $?.exitstatus }: #{ excerpt(log_path) }" }
       end
 
-      def log_path_for(out_path) = "#{out_path}.log"
+      def log_path_for(out_path) = "#{ out_path }.log"
 
       def elapsed_since(t) = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
 
-      # A Ruby exception puts its message on the first line; the frames at the
-      # end are always the same three and say nothing.
+      # The exception message is on the first line; the trailing frames are always the same three.
       def excerpt(path)
         File.readlines(path).map(&:strip).reject(&:empty?).first(3).join(" / ")
       end
