@@ -9,21 +9,16 @@ module TypeProf
     PROJECTS_DIR = File.join(TMP_DIR, "projects")
     OUT_DIR = File.join(TMP_DIR, "out")
 
-    # `--no-collection` pins the bare analysis even if an rbs_collection.yaml appears in cwd.
-    FLAGS = ["--no-collection", "--show-stats", "--show-errors"].freeze
-
-    # ~8x the slowest project today; even two hangs in a row fit in CI's 15-minute job.
+    # Only to catch hangs; generous so that a slow CI runner never trips it.
     TIMEOUT = 300
 
-    # `ref` is pinned so that only TypeProf changes between measurements.
     class Project
       attr_reader :name
 
-      def initialize(name:, repo:, ref:, exclude: [])
+      def initialize(name:, repo:, ref:)
         @name = name
         @repo = repo
         @ref = ref
-        @exclude = exclude
       end
 
       def dir = File.join(PROJECTS_DIR, @name)
@@ -48,10 +43,9 @@ module TypeProf
       def measure
         FileUtils.mkdir_p(OUT_DIR)
         out_path = File.join(OUT_DIR, "#{ @name }.out")
+        # `--no-collection` pins the bare analysis even if an rbs_collection.yaml appears in cwd.
         cmd = ["bundle", "exec", "ruby", File.join(ROOT, "bin/typeprof"),
-               "-o", out_path, *FLAGS,
-               *@exclude.flat_map {|glob| ["--exclude", File.expand_path(glob, dir)] },
-               dir]
+               "-o", out_path, "--no-collection", "--show-stats", "--show-errors", dir]
 
         result = { name: @name }.merge(execute(cmd))
         result.merge!(Metrics.parse(File.read(out_path))) if result[:status] == :ok
@@ -83,20 +77,11 @@ module TypeProf
       end
     end
 
-    # `exclude` lists the files the project cannot parse on purpose (broken
-    # test fixtures and ERB templates), so "failed to analyze" always means
-    # a TypeProf regression.
     PROJECTS = [
       Project.new(
         name: "typeprof",
         repo: "https://github.com/ruby/typeprof.git",
         ref: "v0.32.0",
-        exclude: [
-          "scenario/**/*",
-          "test/fixtures/exclude_test/templates/page.rb",
-          "test/fixtures/syntax_error/syntax_error.rb",
-          "test/fixtures/syntax_error/syntax_error.rbs",
-        ],
       ),
       Project.new(
         name: "optcarrot",
@@ -107,7 +92,6 @@ module TypeProf
         name: "redmine",
         repo: "https://github.com/redmine/redmine.git",
         ref: "7.0.1",
-        exclude: ["lib/generators/redmine_plugin_model/templates/migration.rb"],
       ),
       Project.new(
         name: "rubygems.org",
