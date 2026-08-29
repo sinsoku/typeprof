@@ -78,16 +78,16 @@ module TypeProf
         rescue Timeout::Error
           Process.kill("KILL", pid)
           Process.waitpid(pid)
-          return { elapsed: elapsed_since(t), status: :timeout, error: "exceeded #{ TIMEOUT }s" }
+          return { status: :timeout, error: "exceeded #{ TIMEOUT }s" }
         end
 
-        elapsed = elapsed_since(t)
-        return { elapsed:, status: :ok } if $?.success?
+        unless $?.success?
+          return { status: :crash, error: "exited with #{ $?.exitstatus || "signal #{ $?.termsig }" }" }
+        end
 
-        { elapsed:, status: :crash, error: "exited with #{ $?.exitstatus || "signal #{ $?.termsig }" }" }
+        elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
+        { elapsed:, status: :ok }
       end
-
-      def elapsed_since(t) = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t).round(2)
     end
 
     PROJECTS = [
