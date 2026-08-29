@@ -1,4 +1,3 @@
-require "bundler"
 require "fileutils"
 require "timeout"
 require_relative "metrics"
@@ -15,13 +14,7 @@ module TypeProf
     # ~30x the slowest project today; even four simultaneous hangs fit in CI's 15-minute job.
     TIMEOUT = 120
 
-    # `Bundler.with_unbundled_env` swaps ENV in place, so build the environment once instead.
-    UNBUNDLED_ENV = Bundler.unbundled_env.freeze
-
     module_function
-
-    # The children chdir into the projects, whose own Gemfiles would otherwise win.
-    def bundle_env(gemfile) = UNBUNDLED_ENV.merge("BUNDLE_GEMFILE" => gemfile)
 
     def git!(*args, dir:) = system("git", "-C", dir, *args, exception: true)
 
@@ -47,7 +40,9 @@ module TypeProf
       def measure
         FileUtils.mkdir_p(OUT_DIR)
         out_path = File.join(OUT_DIR, "#{ name }.out")
-        argv = ["-o", out_path, *FLAGS, *exclude.flat_map {|pat| ["--exclude", pat] }, *targets]
+        argv = ["-o", out_path, *FLAGS,
+                *exclude.flat_map {|glob| ["--exclude", File.expand_path(glob, dir)] },
+                *targets.map {|target| File.expand_path(target, dir) }]
 
         run = { name: name }.merge(execute(argv, out_path))
         return run unless run[:status] == :ok
@@ -66,8 +61,7 @@ module TypeProf
         log_path = log_path_for(out_path)
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-        pid = Process.spawn(Benchmark.bundle_env(File.join(ROOT, "Gemfile")), *cmd,
-                            unsetenv_others: true, chdir: dir, [:out, :err] => log_path)
+        pid = Process.spawn(*cmd, [:out, :err] => log_path)
         begin
           Timeout.timeout(TIMEOUT) { Process.waitpid(pid) }
         rescue Timeout::Error

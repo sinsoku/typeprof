@@ -6,6 +6,9 @@ module TypeProf
     # Prepares and measures every project, writes the two files
     # github-action-benchmark reads, and returns whether all analysed cleanly.
     def self.run
+      # `bundle exec` for the children resolves the Gemfile from here.
+      Dir.chdir(ROOT)
+
       # The first run clones the projects, which takes a minute or so.
       PROJECTS.each do |project|
         puts "Preparing #{ project.name }" unless Dir.exist?(project.dir)
@@ -14,8 +17,7 @@ module TypeProf
 
       # Almost always a no-op, but a stale lockfile (e.g. after switching
       # branches) would surface as a confusing per-project crash.
-      system(bundle_env(File.join(ROOT, "Gemfile")), "bundle", "install", "--quiet",
-             unsetenv_others: true, out: File::NULL, err: File::NULL) or
+      system("bundle", "install", "--quiet", out: File::NULL, err: File::NULL) or
         raise "bundle install failed"
 
       analysis_time = []
