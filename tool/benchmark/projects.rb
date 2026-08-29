@@ -14,16 +14,20 @@ module TypeProf
     # ~30x the slowest project today; even four simultaneous hangs fit in CI's 15-minute job.
     TIMEOUT = 120
 
-    module_function
-
-    def git!(*args, dir:) = system("git", "-C", dir, *args, exception: true)
-
     # `ref` is pinned so that only TypeProf changes between measurements; a project is
     # analysed exactly as cloned, so its checkout is fully determined by the ref.
-    Project = Data.define(:name, :repo, :ref, :targets, :exclude) do
-      def initialize(targets: ["."], exclude: [], **) = super
+    class Project
+      attr_reader :name
 
-      def dir = File.join(PROJECTS_DIR, name)
+      def initialize(name:, repo:, ref:, targets: ["."], exclude: [])
+        @name = name
+        @repo = repo
+        @ref = ref
+        @targets = targets
+        @exclude = exclude
+      end
+
+      def dir = File.join(PROJECTS_DIR, @name)
 
       # `git clone --branch` warns on annotated tags and rejects SHAs; init + fetch
       # handles any ref (GitHub allows fetching arbitrary SHAs).
@@ -31,20 +35,20 @@ module TypeProf
         return if Dir.exist?(File.join(dir, ".git"))
 
         FileUtils.mkdir_p(dir)
-        Benchmark.git!("init", "-q", dir: dir)
-        Benchmark.git!("remote", "add", "origin", repo, dir: dir)
-        Benchmark.git!("fetch", "--depth", "1", "-q", "origin", ref, dir: dir)
-        Benchmark.git!("checkout", "-q", "FETCH_HEAD", dir: dir)
+        git!("init", "-q")
+        git!("remote", "add", "origin", @repo)
+        git!("fetch", "--depth", "1", "-q", "origin", @ref)
+        git!("checkout", "-q", "FETCH_HEAD")
       end
 
       def measure
         FileUtils.mkdir_p(OUT_DIR)
-        out_path = File.join(OUT_DIR, "#{ name }.out")
+        out_path = File.join(OUT_DIR, "#{ @name }.out")
         argv = ["-o", out_path, *FLAGS,
-                *exclude.flat_map {|glob| ["--exclude", File.expand_path(glob, dir)] },
-                *targets.map {|target| File.expand_path(target, dir) }]
+                *@exclude.flat_map {|glob| ["--exclude", File.expand_path(glob, dir)] },
+                *@targets.map {|target| File.expand_path(target, dir) }]
 
-        run = { name: name }.merge(execute(argv, out_path))
+        run = { name: @name }.merge(execute(argv, out_path))
         return run unless run[:status] == :ok
 
         metrics = Metrics.parse(File.read(out_path))
@@ -54,6 +58,8 @@ module TypeProf
       end
 
       private
+
+      def git!(*args) = system("git", "-C", dir, *args, exception: true)
 
       def execute(argv, out_path)
         cmd = ["bundle", "exec", "ruby", File.join(ROOT, "bin/typeprof"), *argv]
