@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "bundler"
-require "bundler/lockfile_parser"
 require "fileutils"
 require "timeout"
 
@@ -25,15 +24,7 @@ module TypeProf
 
     def bundle_env(gemfile) = UNBUNDLED_ENV.merge("BUNDLE_GEMFILE" => gemfile)
 
-    def git(*args, dir: ROOT) = IO.popen(["git", "-C", dir, *args], &:read)
-
-    def git!(*args, dir: ROOT) = system("git", "-C", dir, *args, exception: true)
-
-    # The revision a lockfile pins ruby/rbs to, or nil if it does not use git.
-    def rbs_revision(lock_path)
-      sources = Bundler::LockfileParser.new(File.read(lock_path)).sources
-      sources.grep(Bundler::Source::Git).find { _1.name == "rbs" }&.revision
-    end
+    def git!(*args, dir:) = system("git", "-C", dir, *args, exception: true)
 
     # `ref` is pinned so that only TypeProf changes between measurements. A
     # project is analysed exactly as cloned — no gem installation, no RBS
