@@ -115,6 +115,7 @@ module TypeProf::Core
       def req_keywords = []
       def opt_keywords = []
       def rest_keywords = nil
+      def no_keywords = false
 
       def mname_code_range(name)
         idx = @args.index(name.to_sym) # TODO: support string args
@@ -146,6 +147,12 @@ module TypeProf::Core
       attr_reader :singleton, :args
 
       def attrs = { singleton:, args: }
+
+      # Interface expected by MethodDefBox
+      def req_keywords = []
+      def opt_keywords = []
+      def rest_keywords = nil
+      def no_keywords = false
 
       def mname_code_range(name)
         idx = @args.index(name.to_sym)
@@ -205,6 +212,12 @@ module TypeProf::Core
       attr_reader :singleton, :args
 
       def attrs = { singleton:, args: }
+
+      # Interface expected by MethodDefBox
+      def req_keywords = []
+      def opt_keywords = []
+      def rest_keywords = nil
+      def no_keywords = false
 
       def mname_code_range(name)
         idx = @args.index(name.to_sym) # TODO: support string args
