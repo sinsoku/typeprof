@@ -81,12 +81,10 @@ module TypeProf
 
         {
           overall: { typed: m[1].to_i, total: m[2].to_i },
-          # `--show-errors` emits one line per diagnostic, e.g.
-          #   # (239,27)-(239,30):undefined method: nil#[]
+          # One line per diagnostic, e.g. "# (239,27)-(239,30):undefined method: nil#[]"
           diagnostics: text.each_line.count {|line| line.match?(/^# \(\d+,\d+\)-\(\d+,\d+\):/) },
         }
       end
     end
-
   end
 end
