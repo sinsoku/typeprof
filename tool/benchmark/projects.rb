@@ -13,19 +13,18 @@ module TypeProf
     # appears in cwd; `--show-errors` feeds the diagnostics metric.
     FLAGS = ["--no-collection", "--show-stats", "--show-errors"].freeze
 
-    # ~30x the slowest project today; even four hangs in a row fit in CI's 15-minute job.
-    TIMEOUT = 120
+    # ~8x the slowest project today; even two hangs in a row fit in CI's 15-minute job.
+    TIMEOUT = 300
 
     # `ref` is pinned so that only TypeProf changes between measurements; a project is
     # analysed exactly as cloned, so its checkout is fully determined by the ref.
     class Project
       attr_reader :name
 
-      def initialize(name:, repo:, ref:, targets: ["."], exclude: [])
+      def initialize(name:, repo:, ref:, exclude: [])
         @name = name
         @repo = repo
         @ref = ref
-        @targets = targets
         @exclude = exclude
       end
 
@@ -53,7 +52,7 @@ module TypeProf
         out_path = File.join(OUT_DIR, "#{ @name }.out")
         argv = ["-o", out_path, *FLAGS,
                 *@exclude.flat_map {|glob| ["--exclude", File.expand_path(glob, dir)] },
-                *@targets.map {|target| File.expand_path(target, dir) }]
+                dir]
 
         result = { name: @name }.merge(execute(argv))
         result.merge!(Metrics.parse(File.read(out_path))) if result[:status] == :ok
@@ -86,12 +85,20 @@ module TypeProf
       end
     end
 
+    # `exclude` lists the files the project cannot parse on purpose (broken
+    # test fixtures and ERB templates), so "failed to analyze" always means
+    # a TypeProf regression.
     PROJECTS = [
       Project.new(
         name: "typeprof",
         repo: "https://github.com/ruby/typeprof.git",
         ref: "v0.32.0",
-        exclude: ["scenario/**/*"],
+        exclude: [
+          "scenario/**/*",
+          "test/fixtures/exclude_test/templates/page.rb",
+          "test/fixtures/syntax_error/syntax_error.rb",
+          "test/fixtures/syntax_error/syntax_error.rbs",
+        ],
       ),
       Project.new(
         name: "optcarrot",
@@ -102,13 +109,12 @@ module TypeProf
         name: "redmine",
         repo: "https://github.com/redmine/redmine.git",
         ref: "7.0.1",
-        targets: ["app"],
+        exclude: ["lib/generators/redmine_plugin_model/templates/migration.rb"],
       ),
       Project.new(
         name: "rubygems.org",
         repo: "https://github.com/rubygems/rubygems.org.git",
         ref: "2abc82667d02ef7ae3a1433d621c1f7463985c6d", # 2026-08-28 master
-        targets: ["app", "lib"],
       ),
     ].freeze
   end
