@@ -22,9 +22,6 @@ module TypeProf
       # `bundle exec` for the children resolves the Gemfile from here.
       Dir.chdir(ROOT)
 
-      # The first run clones the projects, which takes a minute or so.
-      PROJECTS.each(&:prepare!)
-
       # Almost always a no-op, but a stale lockfile (e.g. after switching
       # branches) would surface as a confusing per-project crash.
       system("bundle", "install", "--quiet") or raise "bundle install failed"
@@ -34,6 +31,8 @@ module TypeProf
       failed = false
 
       PROJECTS.each do |project|
+        # The first run clones the project, which takes a minute or so.
+        project.prepare!
         result = project.measure
         if result[:status] == :ok
           typed, total = result[:overall].values_at(:typed, :total)

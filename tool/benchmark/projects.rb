@@ -55,11 +55,11 @@ module TypeProf
                 *@exclude.flat_map {|glob| ["--exclude", File.expand_path(glob, dir)] },
                 *@targets.map {|target| File.expand_path(target, dir) }]
 
-        result = { name: @name }.merge(execute(argv, out_path))
+        result = { name: @name }.merge(execute(argv))
         return result unless result[:status] == :ok
 
         metrics = Metrics.parse(File.read(out_path))
-        # The dump is only Metrics' input and runs to hundreds of KB; failures keep theirs for diagnosis.
+        # The dump (hundreds of KB) only feeds Metrics: delete it on success, keep it when the run failed.
         FileUtils.rm_f(out_path)
         result.merge(metrics)
       end
@@ -68,7 +68,7 @@ module TypeProf
 
       def git!(*args) = system("git", "-C", dir, *args, exception: true)
 
-      def execute(argv, out_path)
+      def execute(argv)
         cmd = ["bundle", "exec", "ruby", File.join(ROOT, "bin/typeprof"), *argv]
         t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
