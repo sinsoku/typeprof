@@ -34,6 +34,7 @@ module TypeProf
         # The first run clones the project, which takes a minute or so.
         project.prepare!
         result = project.measure
+
         if result[:status] == :ok
           typed, total = result[:overall].values_at(:typed, :total)
           pct = total.zero? ? 0.0 : (typed * 100.0 / total).round(2)
