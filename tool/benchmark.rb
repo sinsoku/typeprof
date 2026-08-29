@@ -9,8 +9,8 @@
 #   $ ruby tool/benchmark.rb
 #   typeprof         ok    1.79s   78.37%   475 diagnostics
 #   ...
-#   => tmp/benchmark/speed.json     (customSmallerIsBetter, seconds)
-#   => tmp/benchmark/coverage.json  (customBiggerIsBetter, typed slots %)
+#   => tmp/benchmark/analysis_time.json  (customSmallerIsBetter, seconds)
+#   => tmp/benchmark/type_coverage.json  (customBiggerIsBetter, typed slots %)
 
 require "json"
 require_relative "benchmark/projects"
@@ -29,8 +29,8 @@ module TypeProf
            unsetenv_others: true, out: File::NULL, err: File::NULL) or
       raise "bundle install failed"
 
-    speed = []
-    coverage = []
+    analysis_time = []
+    type_coverage = []
     failed = false
 
     PROJECTS.each do |project|
@@ -40,8 +40,8 @@ module TypeProf
         pct = (typed * 100.0 / total).round(2)
         puts format("%-16s ok %8.2fs %8.2f%% %5d diagnostics",
                     result[:name], result[:elapsed], pct, result[:diagnostics])
-        speed << { name: result[:name], unit: "s", value: result[:elapsed] }
-        coverage << { name: result[:name], unit: "%", value: pct }
+        analysis_time << { name: result[:name], unit: "s", value: result[:elapsed] }
+        type_coverage << { name: result[:name], unit: "%", value: pct }
       else
         failed = true
         puts format("%-16s %s: %s", result[:name], result[:status], result[:error])
@@ -50,8 +50,8 @@ module TypeProf
 
     gha_dir = File.join(ROOT, "tmp", "benchmark")
     FileUtils.mkdir_p(gha_dir)
-    File.write(File.join(gha_dir, "speed.json"), JSON.pretty_generate(speed))
-    File.write(File.join(gha_dir, "coverage.json"), JSON.pretty_generate(coverage))
+    File.write(File.join(gha_dir, "analysis_time.json"), JSON.pretty_generate(analysis_time))
+    File.write(File.join(gha_dir, "type_coverage.json"), JSON.pretty_generate(type_coverage))
 
     exit 1 if failed
   end

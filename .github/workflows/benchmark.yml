@@ -27,17 +27,17 @@ jobs:
           ruby-version: '3.4'
           bundler-cache: true
 
-      # Writes tmp/benchmark/{speed,coverage}.json and fails the job when any
+      # Writes tmp/benchmark/{analysis_time,type_coverage}.json and fails the job when any
       # project does not analyse cleanly.
       - name: Measure
         run: ruby tool/benchmark.rb
 
-      - name: Publish speed
+      - name: Publish analysis time
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: 'Analysis time'
           tool: 'customSmallerIsBetter'
-          output-file-path: tmp/benchmark/speed.json
+          output-file-path: tmp/benchmark/analysis_time.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: ${{ github.ref == 'refs/heads/master' }}
           summary-always: true
@@ -45,12 +45,12 @@ jobs:
           alert-threshold: '150%'
           comment-on-alert: true
 
-      - name: Publish coverage
+      - name: Publish type coverage
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: 'Type coverage'
           tool: 'customBiggerIsBetter'
-          output-file-path: tmp/benchmark/coverage.json
+          output-file-path: tmp/benchmark/type_coverage.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: ${{ github.ref == 'refs/heads/master' }}
           summary-always: true
