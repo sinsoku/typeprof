@@ -52,6 +52,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: ${{ github.ref == 'refs/heads/master' }}
           summary-always: true
-          # Coverage is deterministic; flag even a half-percent drop.
-          alert-threshold: '100.5%'
+          # Coverage is deterministic; flag any drop (the comparison is strict).
+          alert-threshold: '100%'
           comment-on-alert: true
