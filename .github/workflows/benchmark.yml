@@ -44,7 +44,6 @@ jobs:
           # Shared runners vary by 10-20%; only flag clear regressions.
           alert-threshold: '150%'
           comment-on-alert: true
-          fail-on-alert: false
 
       - name: Publish coverage
         uses: benchmark-action/github-action-benchmark@v1
@@ -58,4 +57,3 @@ jobs:
           # Coverage is deterministic, so any real drop beyond rounding matters.
           alert-threshold: '101%'
           comment-on-alert: true
-          fail-on-alert: false
