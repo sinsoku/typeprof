@@ -12,47 +12,6 @@
 #   => tmp/benchmark/analysis_time.json  (customSmallerIsBetter, seconds)
 #   => tmp/benchmark/type_coverage.json  (customBiggerIsBetter, typed slots %)
 
-require "json"
-require_relative "benchmark/projects"
+require_relative "benchmark/runner"
 
-module TypeProf
-  module Benchmark
-    # The first run clones the projects, which takes a minute or so.
-    PROJECTS.each do |project|
-      puts "Preparing #{ project.name }" unless Dir.exist?(project.dir)
-      project.prepare!
-    end
-
-    # Almost always a no-op, but a stale lockfile (e.g. after switching
-    # branches) would surface as a confusing per-project crash.
-    system(bundle_env(File.join(ROOT, "Gemfile")), "bundle", "install", "--quiet",
-           unsetenv_others: true, out: File::NULL, err: File::NULL) or
-      raise "bundle install failed"
-
-    analysis_time = []
-    type_coverage = []
-    failed = false
-
-    PROJECTS.each do |project|
-      result = project.measure
-      if result[:status] == :ok
-        typed, total = result[:overall].values_at(:typed, :total)
-        pct = (typed * 100.0 / total).round(2)
-        puts format("%-16s ok %8.2fs %8.2f%% %5d diagnostics",
-                    result[:name], result[:elapsed], pct, result[:diagnostics])
-        analysis_time << { name: result[:name], unit: "s", value: result[:elapsed] }
-        type_coverage << { name: result[:name], unit: "%", value: pct }
-      else
-        failed = true
-        puts format("%-16s %s: %s", result[:name], result[:status], result[:error])
-      end
-    end
-
-    gha_dir = File.join(ROOT, "tmp", "benchmark")
-    FileUtils.mkdir_p(gha_dir)
-    File.write(File.join(gha_dir, "analysis_time.json"), JSON.pretty_generate(analysis_time))
-    File.write(File.join(gha_dir, "type_coverage.json"), JSON.pretty_generate(type_coverage))
-
-    exit 1 if failed
-  end
-end
+exit 1 unless TypeProf::Benchmark.run

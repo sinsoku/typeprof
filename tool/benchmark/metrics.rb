@@ -6,11 +6,8 @@ module TypeProf
       #   # (239,27)-(239,30):undefined method: nil#[]
       DIAGNOSTIC_RE = /^# \(\d+,\d+\)-\(\d+,\d+\):/
 
-      class ParseError < StandardError; end
-
       def self.parse(text)
-        m = text.match(/^# Overall:\s*(\d+)\/(\d+)/) or
-          raise ParseError, "no statistics in the output"
+        m = text.match(/^# Overall:\s*(\d+)\/(\d+)/) or raise "no statistics in the output"
 
         {
           overall: { typed: m[1].to_i, total: m[2].to_i },

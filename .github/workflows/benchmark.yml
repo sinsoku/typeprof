@@ -1,15 +1,17 @@
 name: Benchmark
 
+# Measures the checked-out tree against the benchmark projects. Only pushes
+# from master append to the published gh-pages history; every branch still
+# gets the summary and alert comparison against the last published point.
+
 on:
   push:
 
-# Only pushes from master append to the published history; every branch still
-# gets the summary and alert comparison against the last published point.
-# The gh-pages history is append-only per run; concurrent runs would race the
-# auto-push.
+# Publishing runs must not race the append-only push to gh-pages; superseded
+# runs on other branches are just cancelled.
 concurrency:
   group: benchmark-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 permissions:
   contents: write # auto-push to the gh-pages branch
@@ -19,16 +21,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # The benchmark measures the checked-out tree as-is, so a shallow
-      # clone is enough.
       - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.4'
           bundler-cache: true
 
-      # Writes tmp/benchmark/{analysis_time,type_coverage}.json and fails the job when any
-      # project does not analyse cleanly.
+      # Writes tmp/benchmark/{analysis_time,type_coverage}.json and fails the
+      # job when any project does not analyse cleanly.
       - name: Measure
         run: ruby tool/benchmark.rb
 

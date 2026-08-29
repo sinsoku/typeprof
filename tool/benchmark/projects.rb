@@ -20,6 +20,7 @@ module TypeProf
 
     module_function
 
+    # The children chdir into the projects, whose own Gemfiles would otherwise win.
     def bundle_env(gemfile) = UNBUNDLED_ENV.merge("BUNDLE_GEMFILE" => gemfile)
 
     def git!(*args, dir:) = system("git", "-C", dir, *args, exception: true)
@@ -51,12 +52,7 @@ module TypeProf
         run = { name: name }.merge(execute(argv, out_path))
         return run unless run[:status] == :ok
 
-        begin
-          metrics = Metrics.parse(File.read(out_path))
-        rescue Metrics::ParseError => e
-          return run.merge(status: :crash, error: "#{ e.class }: #{ e.message }")
-        end
-
+        metrics = Metrics.parse(File.read(out_path))
         # The dump is only Metrics' input and runs to hundreds of KB; failures keep theirs for diagnosis.
         FileUtils.rm_f([out_path, log_path_for(out_path)])
         run.merge(metrics)
