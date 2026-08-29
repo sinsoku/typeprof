@@ -22,8 +22,7 @@ module TypeProf
       # `bundle exec` for the children resolves the Gemfile from here.
       Dir.chdir(ROOT)
 
-      # Almost always a no-op, but a stale lockfile (e.g. after switching
-      # branches) would surface as a confusing per-project crash.
+      # A stale lockfile (e.g. after switching branches) would crash every project.
       system("bundle", "install", "--quiet") or raise "bundle install failed"
 
       analysis_time = []
@@ -31,7 +30,6 @@ module TypeProf
       failed = false
 
       PROJECTS.each do |project|
-        # The first run clones the project, which takes a minute or so.
         project.prepare!
         result = project.measure
 

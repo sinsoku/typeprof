@@ -27,8 +27,6 @@ jobs:
           ruby-version: '3.4'
           bundler-cache: true
 
-      # Writes tmp/benchmark/{analysis_time,type_coverage}.json and fails the
-      # job when any project does not analyse cleanly.
       - name: Measure
         run: ruby tool/benchmark.rb
 

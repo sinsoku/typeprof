@@ -9,15 +9,13 @@ module TypeProf
     PROJECTS_DIR = File.join(TMP_DIR, "projects")
     OUT_DIR = File.join(TMP_DIR, "out")
 
-    # `--no-collection` pins the bare analysis even if an rbs_collection.yaml ever
-    # appears in cwd; `--show-errors` feeds the diagnostics metric.
+    # `--no-collection` pins the bare analysis even if an rbs_collection.yaml appears in cwd.
     FLAGS = ["--no-collection", "--show-stats", "--show-errors"].freeze
 
     # ~8x the slowest project today; even two hangs in a row fit in CI's 15-minute job.
     TIMEOUT = 300
 
-    # `ref` is pinned so that only TypeProf changes between measurements; a project is
-    # analysed exactly as cloned, so its checkout is fully determined by the ref.
+    # `ref` is pinned so that only TypeProf changes between measurements.
     class Project
       attr_reader :name
 
