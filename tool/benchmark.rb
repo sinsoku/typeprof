@@ -78,4 +78,4 @@ module TypeProf
   end
 end
 
-exit 1 unless TypeProf::Benchmark.run
+exit TypeProf::Benchmark.run
