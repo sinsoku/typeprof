@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - add-projects-bench-test
 
 permissions:
   contents: write # auto-push to the gh-pages branch
