@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790073088531,
+  "lastUpdate": 1790073090746,
   "repoUrl": "https://github.com/sinsoku/typeprof",
   "entries": {
     "Analysis time": [
@@ -133,6 +133,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "redmine",
             "value": 35.58,
+            "unit": "%"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "sinsoku.listy@gmail.com",
+            "name": "Takumi Shotoku",
+            "username": "sinsoku"
+          },
+          "committer": {
+            "email": "sinsoku.listy@gmail.com",
+            "name": "Takumi Shotoku",
+            "username": "sinsoku"
+          },
+          "distinct": false,
+          "id": "b6089c5c1813c51ea8d94dc0d7bfb67db1e6df1c",
+          "message": "Analyze the benchmark projects with the RBS of their gems\n\nThe projects were analyzed with `--no-collection`, so every library\nthey use was untyped. Installing their gems and the matching RBS makes\nthe numbers reflect the way TypeProf is used on a real project, at the\ncost of a longer analysis.\n\nThe gem versions and the RBS collection are pinned to a fixed date so\nthat runs stay comparable. Bundler's cooldown does the pinning, which\navoids keeping a lockfile per project in this repository.",
+          "timestamp": "2026-09-22T17:31:38+09:00",
+          "tree_id": "b6e54365d16d98cec75c098ca1187deca4215329",
+          "url": "https://github.com/sinsoku/typeprof/commit/b6089c5c1813c51ea8d94dc0d7bfb67db1e6df1c"
+        },
+        "date": 1790073090382,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "typeprof",
+            "value": 82.68,
+            "unit": "%"
+          },
+          {
+            "name": "optcarrot",
+            "value": 88.02,
+            "unit": "%"
+          },
+          {
+            "name": "rubygems.org",
+            "value": 35.75,
+            "unit": "%"
+          },
+          {
+            "name": "redmine",
+            "value": 46.99,
             "unit": "%"
           }
         ]
