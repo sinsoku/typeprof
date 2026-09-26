@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790073090746,
+  "lastUpdate": 1790389320918,
   "repoUrl": "https://github.com/sinsoku/typeprof",
   "entries": {
     "Analysis time": [
@@ -87,6 +87,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "redmine",
             "value": 210.21,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "sinsoku.listy@gmail.com",
+            "name": "Takumi Shotoku",
+            "username": "sinsoku"
+          },
+          "committer": {
+            "email": "sinsoku.listy@gmail.com",
+            "name": "Takumi Shotoku",
+            "username": "sinsoku"
+          },
+          "distinct": true,
+          "id": "79a480e345f084c7bd6eecbf11e3600ddca08a14",
+          "message": "tmp: trigger benchmark on test branch",
+          "timestamp": "2026-09-26T11:19:53+09:00",
+          "tree_id": "26ca581b652ab5a3cd6a6adf732db9b5d4ed5246",
+          "url": "https://github.com/sinsoku/typeprof/commit/79a480e345f084c7bd6eecbf11e3600ddca08a14"
+        },
+        "date": 1790389319956,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "typeprof",
+            "value": 3.5,
+            "unit": "s"
+          },
+          {
+            "name": "optcarrot",
+            "value": 2.46,
+            "unit": "s"
+          },
+          {
+            "name": "rubygems.org",
+            "value": 14.69,
+            "unit": "s"
+          },
+          {
+            "name": "redmine",
+            "value": 69.41,
             "unit": "s"
           }
         ]
